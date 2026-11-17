@@ -1718,6 +1718,9 @@ return [
     'vat_percent' => 'VAT %',
     'goods' => 'Goods',
     'vat_to_carry' => 'VAT to carry',
+    'budget_supplier_summary' => 'Supplier Summary',
+    'budget_val_budgeted' => 'Budgeted',
+    'budget_val_hint' => 'Values at budget rate, incl. VAT',
     'budget_alloc_bad_vat_pct' => 'VAT %% for %s must be between 0 and 100',
     'budget_alloc_bad_vat_pct_all' => 'VAT % must be between 0 and 100',
 

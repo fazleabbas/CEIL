@@ -69,6 +69,28 @@ foreach ($details as $d) {
 }
 $grandTotal = $goodsTotal + $vatTotal;
 
+// Supplier Summary: the same figures as the lines table, grouped by supplier +
+// procurement type (the grouping the procurement cards use). Display only —
+// the rows sum to exactly $goodsTotal / $vatTotal / $grandTotal above.
+$supplierSummary = [];
+foreach ($details as $d) {
+    $sk = $d['supplier_id'] . '|' . $d['procurement_type'];
+    if (!isset($supplierSummary[$sk])) {
+        $supplierSummary[$sk] = [
+            'supplier_name' => $d['supplier_name'],
+            'type'          => $d['procurement_type'],
+            'goods'         => 0.0,
+            'vat'           => 0.0,
+        ];
+    }
+    $supplierSummary[$sk]['goods'] += (float)$d['quantity'] * (float)$d['rate'];
+    $supplierSummary[$sk]['vat']   += (float)($d['vat_amount'] ?? 0);
+}
+uasort($supplierSummary, function ($a, $b) {
+    $c = strcasecmp((string)$a['supplier_name'], (string)$b['supplier_name']);
+    return $c !== 0 ? $c : strcmp((string)$a['type'], (string)$b['type']);
+});
+
 // Approved budgets: build the assisted-procurement groups (supplier + type) with
 // remaining-to-create per allocation, plus the list of linked purchases/imports.
 $procGroups = [];
@@ -136,6 +158,48 @@ if ($status === 'approved') {
         ];
         $procGroups[$key]['remaining_total'] += $rem;
         $procGroups[$key]['vat_remaining']   += $lineVatRem;
+    }
+
+    // Card VALUES (Budgeted / Procured / On PO / Remaining), at the BUDGET rate
+    // incl. pro-rated VAT, so they always reconcile to the budget figures.
+    // Done per supplier+type+product, NOT per row: the quantity rows above apply
+    // a product's whole procured qty to EACH of its rows, which would count the
+    // value twice when a product sits on two rows. Here procured and on-PO
+    // quantities are handed out across the product's rows in order, each taking
+    // at most its own quantity (any excess lands on the last row). The quantity
+    // logic above is left exactly as it was.
+    $valRows = [];
+    foreach ($details as $d) {
+        $valRows[$d['supplier_id'] . '|' . $d['procurement_type']][(int)$d['product_id']][] = $d;
+    }
+    foreach ($valRows as $key => $products) {
+        if (!isset($procGroups[$key])) continue;
+        $bud = 0.0; $proc = 0.0; $po = 0.0;
+        foreach ($products as $pid => $rows) {
+            $sid = $rows[0]['supplier_id'];
+            $isImp = $rows[0]['procurement_type'] === 'import';
+            $procLeft = (float)(($isImp ? $importCreated : $purchaseCreated)[$sid . '|' . $pid] ?? 0);
+            $poLeft   = $isImp ? 0.0 : (float)($poOutstanding[$sid . '|' . $pid] ?? 0);
+            $last = count($rows) - 1;
+            foreach ($rows as $ri => $d) {
+                $q    = (float)$d['quantity'];
+                $rate = (float)$d['rate'];
+                $vat  = (float)($d['vat_amount'] ?? 0);
+                $bud += $q * $rate + $vat;
+                // Procured fills the row first, then open-PO quantity takes what is left.
+                $tp = ($ri === $last) ? $procLeft : min($procLeft, $q);
+                $procLeft -= $tp;
+                $roomForPo = max(0, $q - $tp);
+                $to = ($ri === $last) ? $poLeft : min($poLeft, $roomForPo);
+                $poLeft -= $to;
+                $proc += $tp * $rate + budgetLineVatForQty($vat, $q, $tp);
+                $po   += $to * $rate + budgetLineVatForQty($vat, $q, min($to, $roomForPo));
+            }
+        }
+        $procGroups[$key]['val_budgeted']  = $bud;
+        $procGroups[$key]['val_procured']  = $proc;
+        $procGroups[$key]['val_on_po']     = $po;
+        $procGroups[$key]['val_remaining'] = max(0, $bud - $proc - $po);
     }
 
     $lp = $conn->prepare("SELECT id, purchase_number FROM purchases WHERE budget_id = ? ORDER BY id");
@@ -344,6 +408,47 @@ $statusBadge = function ($s) {
                     </table>
                 </div>
 
+                <?php if (!empty($supplierSummary)): ?>
+                <!-- Supplier Summary: the lines above grouped by supplier + type. Printed. -->
+                <div class="mt-3 budget-supplier-summary" style="page-break-inside: avoid;">
+                    <h6 class="mb-2"><i class="bi bi-people"></i> <?php _e('budget_supplier_summary'); ?></h6>
+                    <div class="table-responsive">
+                        <table class="table table-bordered table-sm align-middle mb-0">
+                            <thead class="table-light">
+                                <tr>
+                                    <th style="width:4%;"><?php _e('sr'); ?></th>
+                                    <th><?php _e('supplier'); ?></th>
+                                    <th style="width:10%;"><?php _e('procurement_type'); ?></th>
+                                    <th style="width:16%;" class="text-end"><?php _e('goods'); ?></th>
+                                    <th style="width:16%;" class="text-end"><?php _e('vat_amount'); ?></th>
+                                    <th style="width:16%;" class="text-end"><?php _e('total'); ?></th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                <?php $ssi = 0; foreach ($supplierSummary as $ss): $ssi++; ?>
+                                <tr>
+                                    <td><?php echo $ssi; ?></td>
+                                    <td><?php echo htmlspecialchars($ss['supplier_name'] ?? '-'); ?></td>
+                                    <td><span class="badge bg-<?php echo $ss['type'] === 'import' ? 'info' : 'secondary'; ?>"><?php _e($ss['type']); ?></span></td>
+                                    <td class="text-end"><?php echo formatNumber($ss['goods'], 2); ?></td>
+                                    <td class="text-end"><?php echo formatNumber($ss['vat'], 2); ?></td>
+                                    <td class="text-end fw-semibold"><?php echo formatNumber($ss['goods'] + $ss['vat'], 2); ?></td>
+                                </tr>
+                                <?php endforeach; ?>
+                            </tbody>
+                            <tfoot class="table-light">
+                                <tr class="table-active">
+                                    <th colspan="3" class="text-end"><?php _e('budget_total'); ?></th>
+                                    <th class="text-end"><?php echo formatNumber($goodsTotal, 2); ?></th>
+                                    <th class="text-end"><?php echo formatNumber($vatTotal, 2); ?></th>
+                                    <th class="text-end"><?php echo formatNumber($grandTotal, 2); ?></th>
+                                </tr>
+                            </tfoot>
+                        </table>
+                    </div>
+                </div>
+                <?php endif; ?>
+
                 <?php if ($status === 'approved'): ?>
                 <!-- Assisted procurement: one Create Purchase/Import per supplier+type group -->
                 <div class="mt-4 no-print">
@@ -419,6 +524,33 @@ $statusBadge = function ($s) {
                                         </tfoot>
                                         <?php endif; ?>
                                     </table>
+                                    <?php /* Value of this group at the BUDGET rate, incl. VAT.
+                                            Added below the quantity table, which is unchanged. */ ?>
+                                    <?php if (isset($g['val_budgeted'])): ?>
+                                    <table class="table table-sm table-bordered mb-0 mt-2 small">
+                                        <thead class="table-light">
+                                            <tr>
+                                                <th class="text-end"><?php _e('budget_val_budgeted'); ?></th>
+                                                <th class="text-end"><?php _e('procured'); ?></th>
+                                                <?php if (!$isImport): ?>
+                                                <th class="text-end"><?php _e('on_po'); ?></th>
+                                                <?php endif; ?>
+                                                <th class="text-end"><?php _e('remaining'); ?></th>
+                                            </tr>
+                                        </thead>
+                                        <tbody>
+                                            <tr>
+                                                <td class="text-end"><?php echo formatNumber($g['val_budgeted'], 2); ?></td>
+                                                <td class="text-end"><?php echo formatNumber($g['val_procured'], 2); ?></td>
+                                                <?php if (!$isImport): ?>
+                                                <td class="text-end"><?php echo formatNumber($g['val_on_po'], 2); ?></td>
+                                                <?php endif; ?>
+                                                <td class="text-end fw-semibold <?php echo $g['val_remaining'] > 0.005 ? 'text-warning' : 'text-success'; ?>"><?php echo formatNumber($g['val_remaining'], 2); ?></td>
+                                            </tr>
+                                        </tbody>
+                                    </table>
+                                    <div class="text-muted small mt-1"><i class="bi bi-info-circle"></i> <?php _e('budget_val_hint'); ?></div>
+                                    <?php endif; ?>
                                 </div>
                             </div>
                         </div>
@@ -618,6 +750,41 @@ $statusBadge = function ($s) {
                         </tfoot>
                     </table>
                 </div>
+                <?php
+                // Per-supplier subtotals, recomputed live by recalcApprove() from the
+                // inputs above. $approveGroupOf maps each detail row to its group index.
+                $approveGroupIdx = [];
+                $approveGroupOf  = [];
+                foreach ($supplierSummary as $sk => $ss) { $approveGroupIdx[$sk] = count($approveGroupIdx); }
+                foreach ($details as $d) {
+                    $approveGroupOf[(int)$d['id']] = $approveGroupIdx[$d['supplier_id'] . '|' . $d['procurement_type']];
+                }
+                ?>
+                <h6 class="mb-2"><i class="bi bi-people"></i> <?php _e('budget_supplier_summary'); ?></h6>
+                <div class="table-responsive mb-3">
+                    <table class="table table-sm table-bordered align-middle mb-0">
+                        <thead class="table-light">
+                            <tr>
+                                <th><?php _e('supplier'); ?></th>
+                                <th style="width:10%;"><?php _e('procurement_type'); ?></th>
+                                <th style="width:16%;" class="text-end"><?php _e('goods'); ?></th>
+                                <th style="width:16%;" class="text-end"><?php _e('vat_amount'); ?></th>
+                                <th style="width:16%;" class="text-end"><?php _e('total'); ?></th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            <?php foreach ($supplierSummary as $sk => $ss): $gi = $approveGroupIdx[$sk]; ?>
+                            <tr>
+                                <td><?php echo htmlspecialchars($ss['supplier_name'] ?? '-'); ?></td>
+                                <td><?php _e($ss['type']); ?></td>
+                                <td class="text-end" id="approveSupGoods<?php echo $gi; ?>"><?php echo formatNumber($ss['goods'], 2); ?></td>
+                                <td class="text-end" id="approveSupVat<?php echo $gi; ?>"><?php echo formatNumber($ss['vat'], 2); ?></td>
+                                <td class="text-end fw-semibold" id="approveSupTotal<?php echo $gi; ?>"><?php echo formatNumber($ss['goods'] + $ss['vat'], 2); ?></td>
+                            </tr>
+                            <?php endforeach; ?>
+                        </tbody>
+                    </table>
+                </div>
                 <label class="form-label fw-bold">Signature <small class="text-muted">(optional)</small></label>
                 <?php $myMasterSig = getUserSignature($conn, getUserId()); ?>
                 <?php if ($myMasterSig): ?>
@@ -743,6 +910,7 @@ function deleteBudget(id) {
 <?php if ($canApprove): ?>
 const APPROVE_CAP = <?php echo json_encode((object)$approveCap); ?>;
 const EXCESS_REASONS = <?php echo json_encode((object)$excessReasonByProduct); ?>;
+const APPROVE_GROUP_OF = <?php echo json_encode((object)$approveGroupOf); ?>;
 let budgetSigPad = null;
 function clearBudgetSig() { if (budgetSigPad) { budgetSigPad.clear(); document.getElementById('budgetApproveSigPh').style.display = ''; } }
 
@@ -812,6 +980,7 @@ function refreshApproveExcess() {
 
 function recalcApprove() {
     let goods = 0, vat = 0;
+    const sup = {}; // group index -> { g, v } for the Supplier Summary in the modal
     document.querySelectorAll('#approveBudgetModal .approve-qty').forEach(input => {
         const detailId = input.dataset.detailId;
         const qty = parseFloat(input.value) || 0;
@@ -820,9 +989,24 @@ function recalcApprove() {
         const amt = qty * rate;
         goods += amt;
         const vatInput = document.querySelector('#approveBudgetModal .approve-vat-amt[data-detail-id="' + detailId + '"]');
-        vat += vatInput ? (parseFloat(vatInput.value) || 0) : 0;
+        const lineVat = vatInput ? (parseFloat(vatInput.value) || 0) : 0;
+        vat += lineVat;
+        const gi = APPROVE_GROUP_OF[detailId];
+        if (gi !== undefined) {
+            if (!sup[gi]) sup[gi] = { g: 0, v: 0 };
+            sup[gi].g += amt;
+            sup[gi].v += lineVat;
+        }
         const cell = document.querySelector('#approveBudgetModal .approve-amount[data-detail-id="' + detailId + '"]');
         if (cell) cell.textContent = fmtBudgetAmt(amt);
+    });
+    Object.keys(sup).forEach(gi => {
+        const gEl = document.getElementById('approveSupGoods' + gi);
+        const vEl = document.getElementById('approveSupVat' + gi);
+        const tEl = document.getElementById('approveSupTotal' + gi);
+        if (gEl) gEl.textContent = fmtBudgetAmt(sup[gi].g);
+        if (vEl) vEl.textContent = fmtBudgetAmt(sup[gi].v);
+        if (tEl) tEl.textContent = fmtBudgetAmt(sup[gi].g + sup[gi].v);
     });
     const goodsEl = document.getElementById('approveGoodsTotal');
     const vatEl = document.getElementById('approveVatTotal');

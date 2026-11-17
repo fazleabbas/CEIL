@@ -1718,6 +1718,9 @@ return [
     'vat_percent' => 'VAT %',
     'goods' => 'Bidhaa',
     'vat_to_carry' => 'VAT itakayohamishwa',
+    'budget_supplier_summary' => 'Muhtasari kwa Msambazaji',
+    'budget_val_budgeted' => 'Iliyopangwa',
+    'budget_val_hint' => 'Thamani kwa bei ya bajeti, pamoja na VAT',
     'budget_alloc_bad_vat_pct' => 'VAT %% ya %s lazima iwe kati ya 0 na 100',
     'budget_alloc_bad_vat_pct_all' => 'VAT % lazima iwe kati ya 0 na 100',
 

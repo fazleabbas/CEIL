@@ -1,3 +1,31 @@
+# FEATURE: Budget amounts per supplier [x]
+**Status: COMPLETED** — display only, no schema change, no migration. Verified
+on all 30 budgets with a temporary Admin session file (removed).
+
+**Files (MODIFIED, 3):** `modules/transactions/budget_view.php`, `lang/en.php`,
+`lang/sw.php`. Repo now in git (github.com/fazleabbas/CEIL, private),
+`core.autocrlf=false` so files are stored byte-exact for FTP deploys.
+
+## Decisions (user-confirmed)
+- Supplier Summary table (Supplier | Type | Goods | VAT | Total) under the lines
+  table, every status, PRINTED. Grouped by supplier + type like the cards.
+- Procurement cards gain Budgeted / Procured / On PO / Remaining VALUES, at the
+  **BUDGET rate incl. pro-rated VAT** (option a), not actual purchase amounts,
+  so they always reconcile to the budget.
+- Approve modal gets the same summary, recomputed live in `recalcApprove()`.
+
+## Worth knowing
+- Card values are computed per supplier+type+PRODUCT, handing procured then
+  on-PO qty across the product's rows in order. The quantity rows above still
+  apply a product's whole procured qty to EACH row (pre-existing, untouched),
+  so on a product split over 2 rows the qty rows and the value line can differ.
+- Verified: summary == SQL on 30/30; card values == independent SQL on 25/25
+  approved (15 with purchases/POs); 0 PHP diagnostics; 6 inline scripts pass
+  `node --check`. Pre-change render diff shows only additions.
+
+---
+---
+
 # FIX: `&amp;` showing on screens (master data) + Auto Approved label [x]
 **Status: COMPLETED** — verified through the real save APIs and screens, test rows
 removed. **Needs migration 0052.** Master data only, by user decision: remarks and
