@@ -1,0 +1,315 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Offline Edit Test</title>
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+    <style>
+        body { padding: 20px; background: #f8f9fa; }
+        .status { padding: 15px; margin: 10px 0; border-radius: 8px; }
+        .status.success { background: #d4edda; border: 1px solid #c3e6cb; }
+        .status.error { background: #f8d7da; border: 1px solid #f5c6cb; }
+        .status.info { background: #d1ecf1; border: 1px solid #bee5eb; }
+        .log { background: #1e1e1e; color: #0f0; font-family: monospace; padding: 15px; border-radius: 5px; max-height: 400px; overflow-y: auto; font-size: 12px; }
+        .btn-section { margin: 20px 0; }
+        pre { background: #f8f9fa; padding: 15px; border-radius: 5px; border: 1px solid #dee2e6; }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>🧪 Offline Edit Persistence Test</h1>
+        <p class="text-muted">This tests if offline edits persist after page refresh</p>
+
+        <div id="statusBox" class="status info">
+            <strong>Status:</strong> Initializing...
+        </div>
+
+        <div class="btn-section">
+            <h4>Step 1: Initialize</h4>
+            <button class="btn btn-primary" onclick="initTest()">🔧 Initialize Test</button>
+        </div>
+
+        <div class="btn-section">
+            <h4>Step 2: Create Test Data</h4>
+            <button class="btn btn-success" onclick="createTestRole()">➕ Create Test Role</button>
+        </div>
+
+        <div class="btn-section">
+            <h4>Step 3: Edit Offline</h4>
+            <button class="btn btn-warning" onclick="editRoleOffline()">✏️ Edit Role (Simulated Offline)</button>
+        </div>
+
+        <div class="btn-section">
+            <h4>Step 4: Check Persistence</h4>
+            <button class="btn btn-info" onclick="checkData()">🔍 Check Current Data</button>
+            <button class="btn btn-secondary" onclick="location.reload()">🔄 Refresh Page</button>
+            <p class="text-muted small mt-2">After editing, click "Refresh Page" then "Check Current Data" to see if edit persisted</p>
+        </div>
+
+        <div class="btn-section">
+            <h4>Utilities</h4>
+            <button class="btn btn-danger btn-sm" onclick="clearDB()">🗑️ Clear Database</button>
+        </div>
+
+        <div class="card mt-3">
+            <div class="card-header">
+                <h5>Current Data</h5>
+            </div>
+            <div class="card-body">
+                <pre id="dataDisplay">No data yet...</pre>
+            </div>
+        </div>
+
+        <div class="card mt-3">
+            <div class="card-header">
+                <h5>Console Log</h5>
+            </div>
+            <div class="card-body">
+                <div id="logOutput" class="log"></div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        let db = null;
+        const DB_NAME = 'InventoryDB';
+        const DB_VERSION = 1;
+
+        // Log function
+        function log(message, color = '#0f0') {
+            const logDiv = document.getElementById('logOutput');
+            const time = new Date().toLocaleTimeString();
+            const line = document.createElement('div');
+            line.style.color = color;
+            line.textContent = `[${time}] ${message}`;
+            logDiv.appendChild(line);
+            logDiv.scrollTop = logDiv.scrollHeight;
+            console.log(message);
+        }
+
+        // Status update
+        function setStatus(message, type = 'info') {
+            const statusBox = document.getElementById('statusBox');
+            statusBox.className = 'status ' + type;
+            statusBox.innerHTML = '<strong>Status:</strong> ' + message;
+        }
+
+        // Initialize database
+        async function initTest() {
+            log('🔧 Initializing IndexedDB...');
+            setStatus('Initializing database...', 'info');
+
+            return new Promise((resolve, reject) => {
+                const request = indexedDB.open(DB_NAME, DB_VERSION);
+
+                request.onerror = () => {
+                    log('❌ Failed to open database: ' + request.error, '#f00');
+                    setStatus('Failed to open database!', 'error');
+                    reject(request.error);
+                };
+
+                request.onsuccess = () => {
+                    db = request.result;
+                    log('✅ Database opened successfully', '#0f0');
+                    setStatus('Database ready!', 'success');
+                    checkData();
+                    resolve();
+                };
+
+                request.onupgradeneeded = (event) => {
+                    log('📦 Creating database schema...');
+                    const db = event.target.result;
+
+                    if (!db.objectStoreNames.contains('roles')) {
+                        db.createObjectStore('roles', { keyPath: 'id' });
+                        log('✅ Created "roles" object store');
+                    }
+
+                    if (!db.objectStoreNames.contains('sync_queue')) {
+                        db.createObjectStore('sync_queue', { keyPath: 'id', autoIncrement: true });
+                        log('✅ Created "sync_queue" object store');
+                    }
+                };
+            });
+        }
+
+        // Create test role
+        async function createTestRole() {
+            if (!db) {
+                alert('Please initialize first!');
+                return;
+            }
+
+            log('➕ Creating test role...');
+            
+            const testRole = {
+                id: 999,
+                name: 'Test Role',
+                description: 'Created for testing',
+                is_active: 1,
+                user_count: 0,
+                created_at: new Date().toISOString(),
+                updated_at: new Date().toISOString()
+            };
+
+            try {
+                const tx = db.transaction(['roles'], 'readwrite');
+                const store = tx.objectStore('roles');
+                const request = store.put(testRole);
+
+                await new Promise((resolve, reject) => {
+                    request.onsuccess = () => resolve();
+                    request.onerror = () => reject(request.error);
+                });
+
+                log('✅ Test role created successfully', '#0f0');
+                setStatus('Test role created!', 'success');
+                checkData();
+            } catch (error) {
+                log('❌ Failed to create role: ' + error, '#f00');
+                setStatus('Failed to create role!', 'error');
+            }
+        }
+
+        // Edit role offline
+        async function editRoleOffline() {
+            if (!db) {
+                alert('Please initialize first!');
+                return;
+            }
+
+            log('✏️ Editing role offline...');
+
+            try {
+                // Get existing role
+                const tx1 = db.transaction(['roles'], 'readonly');
+                const store1 = tx1.objectStore('roles');
+                const getRequest = store1.get(999);
+
+                const existingRole = await new Promise((resolve, reject) => {
+                    getRequest.onsuccess = () => resolve(getRequest.result);
+                    getRequest.onerror = () => reject(getRequest.error);
+                });
+
+                if (!existingRole) {
+                    alert('Test role not found! Create it first.');
+                    return;
+                }
+
+                log('📝 Found existing role: ' + existingRole.name);
+
+                // Update the role
+                const editedRole = {
+                    ...existingRole,
+                    name: existingRole.name + ' [EDITED]',
+                    description: 'Edited at ' + new Date().toLocaleTimeString(),
+                    updated_at: new Date().toISOString()
+                };
+
+                log('💾 Saving edited role to IndexedDB...');
+
+                const tx2 = db.transaction(['roles'], 'readwrite');
+                const store2 = tx2.objectStore('roles');
+                const putRequest = store2.put(editedRole);
+
+                await new Promise((resolve, reject) => {
+                    putRequest.onsuccess = () => {
+                        log('✅ SAVED: ' + JSON.stringify(editedRole), '#0f0');
+                        resolve();
+                    };
+                    putRequest.onerror = () => {
+                        log('❌ SAVE FAILED: ' + putRequest.error, '#f00');
+                        reject(putRequest.error);
+                    };
+                });
+
+                log('✅ Role edited successfully!', '#0f0');
+                log('🔄 NOW REFRESH THE PAGE (F5) AND CLICK "Check Current Data"', '#ff0');
+                setStatus('Role edited! Now refresh page to test persistence.', 'success');
+                
+                checkData();
+            } catch (error) {
+                log('❌ Failed to edit role: ' + error, '#f00');
+                setStatus('Failed to edit role!', 'error');
+            }
+        }
+
+        // Check current data
+        async function checkData() {
+            if (!db) {
+                log('⚠️ Database not initialized', '#ff0');
+                return;
+            }
+
+            log('🔍 Checking current data...');
+
+            try {
+                const tx = db.transaction(['roles'], 'readonly');
+                const store = tx.objectStore('roles');
+                const request = store.getAll();
+
+                const roles = await new Promise((resolve, reject) => {
+                    request.onsuccess = () => resolve(request.result);
+                    request.onerror = () => reject(request.error);
+                });
+
+                log(`📊 Found ${roles.length} role(s) in database`);
+
+                const dataDisplay = document.getElementById('dataDisplay');
+                if (roles.length === 0) {
+                    dataDisplay.textContent = 'No roles in database';
+                } else {
+                    dataDisplay.textContent = JSON.stringify(roles, null, 2);
+                    
+                    roles.forEach(role => {
+                        const hasEdit = role.name.includes('[EDITED]');
+                        if (hasEdit) {
+                            log(`✅ Found edited role: ${role.name}`, '#0f0');
+                        } else {
+                            log(`📝 Found role: ${role.name}`, '#fff');
+                        }
+                    });
+                }
+
+                setStatus(`Found ${roles.length} role(s)`, 'info');
+            } catch (error) {
+                log('❌ Failed to check data: ' + error, '#f00');
+                setStatus('Failed to check data!', 'error');
+            }
+        }
+
+        // Clear database
+        async function clearDB() {
+            if (!db) {
+                alert('Please initialize first!');
+                return;
+            }
+
+            if (!confirm('Clear all test data?')) {
+                return;
+            }
+
+            log('🗑️ Clearing database...');
+
+            try {
+                const tx = db.transaction(['roles', 'sync_queue'], 'readwrite');
+                await tx.objectStore('roles').clear();
+                await tx.objectStore('sync_queue').clear();
+
+                log('✅ Database cleared', '#0f0');
+                setStatus('Database cleared!', 'info');
+                checkData();
+            } catch (error) {
+                log('❌ Failed to clear: ' + error, '#f00');
+            }
+        }
+
+        // Auto-initialize on load
+        window.addEventListener('load', () => {
+            log('🎬 Page loaded');
+            initTest();
+        });
+    </script>
+</body>
+</html>

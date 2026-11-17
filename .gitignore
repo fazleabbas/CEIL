@@ -1,0 +1,21 @@
+# Database dumps / backups (production data)
+db_backups/
+*.sql.gz
+
+# Captured sessions and cookies
+har/
+*.har
+cookies.txt
+
+# Customer documents, contract, scratch material
+stuffs/
+Service_Agreement_*
+
+# Runtime / temporary files
+temp/
+error/
+*.log
+vendor/*.zip
+
+# Local Claude Code settings
+.claude/settings.local.json

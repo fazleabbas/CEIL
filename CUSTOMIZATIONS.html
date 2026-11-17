@@ -1,0 +1,216 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Simple FIS — Customizations Delivered</title>
+<style>
+  * { box-sizing: border-box; }
+  body {
+    font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+    margin: 0;
+    padding: 0;
+    background: #f4f6f9;
+    color: #2c3e50;
+    line-height: 1.6;
+  }
+  .page {
+    max-width: 1000px;
+    margin: 0 auto;
+    background: #fff;
+    box-shadow: 0 0 20px rgba(0,0,0,0.08);
+  }
+  header {
+    background: linear-gradient(135deg, #1e3a5f 0%, #2c5f8a 100%);
+    color: #fff;
+    padding: 40px 50px;
+  }
+  header h1 { margin: 0 0 8px; font-size: 30px; font-weight: 600; }
+  header p { margin: 0; opacity: 0.85; font-size: 15px; }
+  .meta {
+    margin-top: 18px;
+    font-size: 13px;
+    opacity: 0.9;
+    border-top: 1px solid rgba(255,255,255,0.2);
+    padding-top: 14px;
+  }
+  .content { padding: 30px 50px 50px; }
+  h2 {
+    font-size: 20px;
+    color: #1e3a5f;
+    border-left: 5px solid #2c5f8a;
+    padding-left: 14px;
+    margin-top: 40px;
+    margin-bottom: 14px;
+  }
+  table {
+    width: 100%;
+    border-collapse: collapse;
+    margin-bottom: 10px;
+    font-size: 14px;
+  }
+  th {
+    background: #1e3a5f;
+    color: #fff;
+    text-align: left;
+    padding: 10px 14px;
+    font-weight: 600;
+  }
+  td { padding: 10px 14px; border-bottom: 1px solid #e1e6ec; vertical-align: top; }
+  tr:nth-child(even) td { background: #f8fafc; }
+  td.num { width: 42px; text-align: center; color: #2c5f8a; font-weight: 700; }
+  td.feat { width: 38%; font-weight: 600; color: #1e3a5f; }
+  .timeline th:first-child { width: 130px; }
+  .badge {
+    display: inline-block;
+    padding: 2px 10px;
+    border-radius: 12px;
+    font-size: 12px;
+    font-weight: 600;
+  }
+  .badge-done { background: #d4edda; color: #155724; }
+  .badge-progress { background: #fff3cd; color: #856404; }
+  .note {
+    background: #eef4fb;
+    border: 1px solid #cdddf0;
+    border-radius: 8px;
+    padding: 18px 22px;
+    margin-top: 30px;
+  }
+  .note strong { color: #1e3a5f; }
+  .stats {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 16px;
+    margin: 24px 0 10px;
+  }
+  .stat {
+    flex: 1;
+    min-width: 140px;
+    background: #f8fafc;
+    border: 1px solid #e1e6ec;
+    border-radius: 8px;
+    padding: 18px;
+    text-align: center;
+  }
+  .stat .big { font-size: 28px; font-weight: 700; color: #2c5f8a; }
+  .stat .lbl { font-size: 13px; color: #6b7c8f; margin-top: 4px; }
+  footer {
+    background: #1e3a5f;
+    color: rgba(255,255,255,0.8);
+    text-align: center;
+    padding: 18px;
+    font-size: 13px;
+  }
+  @media print {
+    body { background: #fff; }
+    .page { box-shadow: none; max-width: 100%; }
+    h2 { page-break-after: avoid; }
+    table { page-break-inside: avoid; }
+  }
+</style>
+</head>
+<body>
+<div class="page">
+  <header>
+    <h1>Simple FIS — Customizations Delivered</h1>
+    <p>Inventory &amp; Financial Management System — Client Summary of Work Completed</p>
+    <div class="meta">Prepared: May 2026 &nbsp;|&nbsp; Platform: PHP 7.4 / MySQL &nbsp;|&nbsp; 30 major customizations across 7 areas</div>
+  </header>
+
+  <div class="content">
+
+    <div class="stats">
+      <div class="stat"><div class="big">30+</div><div class="lbl">Major Customizations</div></div>
+      <div class="stat"><div class="big">19</div><div class="lbl">Reports</div></div>
+      <div class="stat"><div class="big">28</div><div class="lbl">Database Upgrades</div></div>
+      <div class="stat"><div class="big">150+</div><div class="lbl">Program Files</div></div>
+    </div>
+
+    <h2>A. Core Inventory &amp; Stock Management</h2>
+    <table>
+      <tr><th>#</th><th>Customization</th><th>Business Benefit</th></tr>
+      <tr><td class="num">1</td><td class="feat">Multi-Location Inventory</td><td>Track stock separately across stores/warehouses</td></tr>
+      <tr><td class="num">2</td><td class="feat">Inter-Location Stock Transfers</td><td>Move stock between locations with receive confirmation</td></tr>
+      <tr><td class="num">3</td><td class="feat">Stock Adjustments</td><td>Correct stock with full audit trail (view/list/approve)</td></tr>
+      <tr><td class="num">4</td><td class="feat">Stock Taking (Physical Count)</td><td>Count stock per location, auto-calculate variances</td></tr>
+      <tr><td class="num">5</td><td class="feat">Opening Stock Setup + Excel Import</td><td>Quick go-live with bulk opening balances</td></tr>
+      <tr><td class="num">6</td><td class="feat">FIFO / LIFO / Average Costing</td><td>Accurate cost-of-goods and stock valuation</td></tr>
+    </table>
+
+    <h2>B. Transactions &amp; Documents</h2>
+    <table>
+      <tr><th>#</th><th>Customization</th><th>Business Benefit</th></tr>
+      <tr><td class="num">7</td><td class="feat">Purchases with PO Numbers</td><td>Formal purchase orders</td></tr>
+      <tr><td class="num">8</td><td class="feat">GL-Based Purchase Imports</td><td>Import purchase costs mapped to accounting buckets</td></tr>
+      <tr><td class="num">9</td><td class="feat">Offline-First Sales POS</td><td>Sell even without internet; auto-syncs when online</td></tr>
+      <tr><td class="num">10</td><td class="feat">Consumption Vouchers</td><td>Authorize material usage with debit notes</td></tr>
+      <tr><td class="num">11</td><td class="feat">Requisition Vouchers + Approval Workflow</td><td>Request stock, approve/reject with remarks &amp; approved qty</td></tr>
+      <tr><td class="num">12</td><td class="feat">Journal Vouchers</td><td>Manual GL / accounting entries</td></tr>
+    </table>
+
+    <h2>C. Payments &amp; Finance</h2>
+    <table>
+      <tr><th>#</th><th>Customization</th><th>Business Benefit</th></tr>
+      <tr><td class="num">13</td><td class="feat">Supplier Payments &amp; Customer Receipts</td><td>Cash flow in/out, linked to locations</td></tr>
+      <tr><td class="num">14</td><td class="feat">Multi-Currency + Exchange Rates</td><td>Transact and report in multiple currencies</td></tr>
+      <tr><td class="num">15</td><td class="feat">VAT Tracking</td><td>Tax-compliant transactions</td></tr>
+      <tr><td class="num">16</td><td class="feat">Customer Ledger &amp; AR Aging</td><td>Track customer balances and aging</td></tr>
+    </table>
+
+    <h2>D. Hierarchical Masters <span class="badge badge-progress">Recent Major Feature</span></h2>
+    <table>
+      <tr><th>#</th><th>Customization</th><th>Business Benefit</th></tr>
+      <tr><td class="num">17</td><td class="feat">Parent-Child Locations (unlimited nesting)</td><td>Group locations; reports roll up to parent</td></tr>
+      <tr><td class="num">18</td><td class="feat">Parent-Child Cost Centres</td><td>Hierarchical cost allocation</td></tr>
+      <tr><td class="num">19</td><td class="feat">Parent-Child Product Categories</td><td>Organized product catalog</td></tr>
+      <tr><td class="num">20</td><td class="feat">Tree-Style Dropdowns Everywhere</td><td>Indented dropdowns showing the full hierarchy</td></tr>
+      <tr><td class="num">21</td><td class="feat">Report Aggregation</td><td>Selecting a parent aggregates all sub-locations/centres</td></tr>
+    </table>
+
+    <h2>E. Reporting &amp; Analytics (19 Reports)</h2>
+    <table>
+      <tr><th>Report</th><th>Description</th></tr>
+      <tr><td class="feat">Stock Report (+ Excel export)</td><td>Current stock by product/location, with hierarchy aggregation</td></tr>
+      <tr><td class="feat">Product Stock Card</td><td>Opening + period movements with FIFO/LIFO/Average</td></tr>
+      <tr><td class="feat">Stock Value Breakdowns</td><td>By location, by product, by category</td></tr>
+      <tr><td class="feat">Profit &amp; Loss Statement</td><td>P&amp;L with costing and hierarchical aggregation</td></tr>
+      <tr><td class="feat">Cost Centre Report &amp; Comparison</td><td>Costs by centre + multi-centre comparison</td></tr>
+      <tr><td class="feat">Product Analysis &amp; Location Breakdown</td><td>Sales/usage trends by product and location</td></tr>
+      <tr><td class="feat">Import Costing / GL Bucket Analysis</td><td>Landed-cost and GL account mapping</td></tr>
+      <tr><td class="feat">Ledger Report</td><td>GL account detail transactions</td></tr>
+    </table>
+
+    <h2>F. Controls, Compliance &amp; Security</h2>
+    <table>
+      <tr><th>#</th><th>Customization</th><th>Business Benefit</th></tr>
+      <tr><td class="num">22</td><td class="feat">Digital Signatures</td><td>Sign-off on transfers, stock counts &amp; requisitions</td></tr>
+      <tr><td class="num">23</td><td class="feat">Role-Based Permissions</td><td>Control view/create/edit/delete per module</td></tr>
+      <tr><td class="num">24</td><td class="feat">Location-Based Access</td><td>Users only see their assigned locations</td></tr>
+      <tr><td class="num">25</td><td class="feat">Full Audit Trail</td><td>Every change logged with before/after values</td></tr>
+      <tr><td class="num">26</td><td class="feat">Notifications</td><td>Alerts to relevant users (e.g. cost-centre approvers)</td></tr>
+    </table>
+
+    <h2>G. Platform &amp; Infrastructure</h2>
+    <table>
+      <tr><th>#</th><th>Customization</th><th>Business Benefit</th></tr>
+      <tr><td class="num">27</td><td class="feat">Bilingual (English / Swahili)</td><td>Localized for the market</td></tr>
+      <tr><td class="num">28</td><td class="feat">Mobile-First Responsive UI</td><td>Touch-friendly, works on phones/tablets</td></tr>
+      <tr><td class="num">29</td><td class="feat">Email / SMTP Integration</td><td>Credentials &amp; notification emails</td></tr>
+      <tr><td class="num">30</td><td class="feat">Excel Import / Export</td><td>Products, categories, suppliers, opening stock</td></tr>
+    </table>
+
+    <div class="note">
+      <strong>Status Note —</strong> The <strong>Hierarchical Masters</strong> feature (items 17–21) is functionally complete:
+      database, UI, dropdowns, and report aggregation are all delivered
+      <span class="badge badge-done">Done</span>.
+    </div>
+
+  </div>
+
+  <footer>
+    Simple FIS — Inventory &amp; Financial Management System &nbsp;•&nbsp; Customizations Summary &nbsp;•&nbsp; May 2026
+  </footer>
+</div>
+</body>
+</html>

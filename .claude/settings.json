@@ -1,0 +1,17 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(test -d \"c:/xampp74/htdocs/simple_fis_sync_cei/tools\" || mkdir \"c:/xampp74/htdocs/simple_fis_sync_cei/tools\" && echo \"ready\")",
+      "Bash(Get-ChildItem -Path \"c:\\\\xampp74\\\\htdocs\\\\simple_fis_sync_cei\" -Recurse -File -Name)",
+      "PowerShell(New-Item -ItemType Directory -Force \"c:\\\\xampp74\\\\htdocs\\\\simple_fis_sync_cei\\\\vendor\\\\PHPMailer\\\\src\")",
+      "PowerShell(\"Created\")",
+      "PowerShell($ProgressPreference = 'SilentlyContinue'; $base = 'https://raw.githubusercontent.com/PHPMailer/PHPMailer/v6.9.1/src/'; $dest = 'c:\\\\xampp74\\\\htdocs\\\\simple_fis_sync_cei\\\\vendor\\\\PHPMailer\\\\src\\\\'; foreach \\($f in @\\('PHPMailer.php','SMTP.php','Exception.php'\\)\\) { try { Invoke-WebRequest -Uri \\($base + $f\\) -OutFile \\($dest + $f\\) -UseBasicParsing; \"OK $f $\\(\\(Get-Item \\($dest+$f\\)\\).Length\\) bytes\" } catch { \"FAIL $f $\\($_.Exception.Message\\)\" } })",
+      "PowerShell(New-Item -ItemType Directory -Force \"c:\\\\xampp74\\\\htdocs\\\\simple_fis_sync_cei\\\\modules\\\\admin\")",
+      "PowerShell($php = 'c:\\\\xampp74\\\\php\\\\php.exe'; if \\(-not \\(Test-Path $php\\)\\) { $php = \\(Get-Command php -ErrorAction SilentlyContinue\\).Source }; if \\(-not $php\\) { 'PHP not found on PATH'; exit 1 }; \"Using: $php\"; $files = @\\('includes\\\\mailer.php','includes\\\\email_templates.php','includes\\\\functions.php','modules\\\\admin\\\\smtp_settings.php','api\\\\smtp_settings-sync.php','api\\\\cost_centres.php','api\\\\cost_centres-sync.php','api\\\\requisition-vouchers-sync.php','modules\\\\masters\\\\cost_centres.php','vendor\\\\PHPMailer\\\\autoload.php'\\); foreach \\($f in $files\\) { $full = \"c:\\\\xampp74\\\\htdocs\\\\simple_fis_sync_cei\\\\$f\"; if \\(-not \\(Test-Path $full\\)\\) { \"MISSING $f\"; continue }; $out = & $php -l $full 2>&1 | Out-String; if \\($LASTEXITCODE -ne 0\\) { \"FAIL  $f`n$out\" } else { \"OK    $f\" } })",
+      "PowerShell($php = 'c:\\\\xampp74\\\\php\\\\php.exe'; foreach \\($f in @\\('api\\\\cost_centres.php','api\\\\smtp_settings-sync.php','includes\\\\functions.php'\\)\\) { $full = \"c:\\\\xampp74\\\\htdocs\\\\simple_fis_sync_cei\\\\$f\"; $out = & $php -l $full 2>&1 | Out-String; if \\($LASTEXITCODE -ne 0\\) { \"FAIL  $f`n$out\" } else { \"OK    $f\" } })"
+    ],
+    "additionalDirectories": [
+      "c:\\xampp74\\htdocs\\simple_fis_sync_cei"
+    ]
+  }
+}

@@ -1,0 +1,45 @@
+-- Migration: 0000_template
+-- Description: Template for creating new migrations
+-- Date: YYYY-MM-DD
+-- Author: Your Name
+--
+-- INSTRUCTIONS:
+-- 1. Copy this file and rename to: NNNN_description.sql (e.g., 0004_add_user_avatar.sql)
+-- 2. Use incrementing 4-digit numbers (0001, 0002, etc.)
+-- 3. Use underscores in filename, not spaces
+-- 4. Write idempotent SQL when possible (IF NOT EXISTS, IF EXISTS checks)
+-- 5. Test migration on a single tenant first before running on all
+--
+-- NAMING CONVENTION:
+-- - 0001_add_tablename.sql        (for new tables)
+-- - 0002_add_columnname_to_table.sql (for new columns)
+-- - 0003_modify_columnname.sql    (for column changes)
+-- - 0004_drop_unused_table.sql    (for removals)
+-- - 0005_insert_default_data.sql  (for data inserts)
+--
+-- TIPS FOR IDEMPOTENT MIGRATIONS:
+--
+-- For CREATE TABLE:
+--   CREATE TABLE IF NOT EXISTS `tablename` (...);
+--
+-- For ADD COLUMN (MySQL 8.0+):
+--   ALTER TABLE tablename ADD COLUMN IF NOT EXISTS columnname VARCHAR(255);
+--
+-- For ADD COLUMN (MySQL 5.7 - use prepared statement):
+--   SET @s = (SELECT IF(
+--       (SELECT COUNT(*) FROM INFORMATION_SCHEMA.COLUMNS
+--        WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'tablename' AND COLUMN_NAME = 'columnname') = 0,
+--       'ALTER TABLE tablename ADD COLUMN columnname VARCHAR(255)',
+--       'SELECT 1'
+--   ));
+--   PREPARE stmt FROM @s;
+--   EXECUTE stmt;
+--   DEALLOCATE PREPARE stmt;
+--
+-- For INSERT (avoid duplicates):
+--   INSERT IGNORE INTO tablename (id, name) VALUES (1, 'Default');
+--   -- OR --
+--   INSERT INTO tablename (id, name) VALUES (1, 'Default') ON DUPLICATE KEY UPDATE name = name;
+
+-- Your SQL statements here:
+

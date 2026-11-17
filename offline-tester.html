@@ -1,0 +1,282 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Offline Sync Tester</title>
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+    <style>
+        body { padding: 20px; background: #f5f5f5; }
+        .test-card { background: white; padding: 20px; border-radius: 8px; margin: 10px 0; }
+        .log { background: #1e1e1e; color: #00ff00; padding: 15px; border-radius: 5px; font-family: monospace; font-size: 12px; max-height: 400px; overflow-y: auto; }
+        .log-line { margin: 2px 0; }
+        .success { color: #28a745; }
+        .error { color: #dc3545; }
+        .info { color: #17a2b8; }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>🧪 Offline Sync Tester</h1>
+        
+        <div class="test-card">
+            <h3>Current Status</h3>
+            <p><strong>Online:</strong> <span id="onlineStatus">Checking...</span></p>
+            <p><strong>IndexedDB Roles:</strong> <span id="dbCount">Loading...</span></p>
+            <p><strong>Sync Queue:</strong> <span id="queueCount">Loading...</span></p>
+            <button class="btn btn-primary" onclick="checkStatus()">Refresh Status</button>
+        </div>
+        
+        <div class="test-card">
+            <h3>Test Scenario</h3>
+            <ol>
+                <li>Make sure you have at least one role in the system</li>
+                <li>Click "Go Offline" below</li>
+                <li>Click "Edit Role Offline"</li>
+                <li>Check IndexedDB content</li>
+                <li>Refresh this page (F5)</li>
+                <li>Check if edited data persists</li>
+            </ol>
+            
+            <button class="btn btn-warning" onclick="simulateOffline()">📴 Go Offline</button>
+            <button class="btn btn-success" onclick="simulateOnline()">📡 Go Online</button>
+            <button class="btn btn-info" onclick="testOfflineEdit()">✏️ Edit Role Offline</button>
+            <button class="btn btn-danger" onclick="clearAllData()">🗑️ Clear All Data</button>
+        </div>
+        
+        <div class="test-card">
+            <h3>IndexedDB Contents</h3>
+            <button class="btn btn-sm btn-secondary" onclick="showDBContents()">Show Contents</button>
+            <pre id="dbContents" class="log mt-2" style="display:none;"></pre>
+        </div>
+        
+        <div class="test-card">
+            <h3>Console Log</h3>
+            <button class="btn btn-sm btn-secondary" onclick="clearLog()">Clear Log</button>
+            <div id="testLog" class="log mt-2"></div>
+        </div>
+    </div>
+
+    <script>
+        const BASE_URL = 'http://localhost:8080/simple_fis_sync/';
+        let db;
+        let isOnline = navigator.onLine;
+        
+        // Initialize
+        document.addEventListener('DOMContentLoaded', async function() {
+            await initDB();
+            await checkStatus();
+            startMonitoring();
+        });
+        
+        // Initialize IndexedDB
+        async function initDB() {
+            return new Promise((resolve, reject) => {
+                const request = indexedDB.open('InventoryDB', 1);
+                
+                request.onerror = () => {
+                    log('❌ Failed to open IndexedDB', 'error');
+                    reject(request.error);
+                };
+                
+                request.onsuccess = () => {
+                    db = request.result;
+                    log('✅ IndexedDB opened', 'success');
+                    resolve();
+                };
+                
+                request.onupgradeneeded = (event) => {
+                    db = event.target.result;
+                    if (!db.objectStoreNames.contains('roles')) {
+                        db.createObjectStore('roles', { keyPath: 'id' });
+                    }
+                    if (!db.objectStoreNames.contains('sync_queue')) {
+                        db.createObjectStore('sync_queue', { keyPath: 'id', autoIncrement: true });
+                    }
+                };
+            });
+        }
+        
+        // Check status
+        async function checkStatus() {
+            document.getElementById('onlineStatus').textContent = isOnline ? '✅ Online' : '📴 Offline';
+            
+            try {
+                const roles = await getAllRoles();
+                document.getElementById('dbCount').textContent = roles.length + ' roles';
+                log(`📊 Found ${roles.length} roles in IndexedDB`);
+                
+                const queue = await getQueue();
+                document.getElementById('queueCount').textContent = queue.length + ' items';
+                log(`📋 Found ${queue.length} items in queue`);
+            } catch (error) {
+                log('❌ Error checking status: ' + error.message, 'error');
+            }
+        }
+        
+        // Get all roles
+        async function getAllRoles() {
+            return new Promise((resolve, reject) => {
+                const tx = db.transaction(['roles'], 'readonly');
+                const store = tx.objectStore('roles');
+                const request = store.getAll();
+                
+                request.onsuccess = () => resolve(request.result);
+                request.onerror = () => reject(request.error);
+            });
+        }
+        
+        // Get queue
+        async function getQueue() {
+            return new Promise((resolve, reject) => {
+                const tx = db.transaction(['sync_queue'], 'readonly');
+                const store = tx.objectStore('sync_queue');
+                const request = store.getAll();
+                
+                request.onsuccess = () => resolve(request.result);
+                request.onerror = () => reject(request.error);
+            });
+        }
+        
+        // Save role
+        async function saveRole(role) {
+            return new Promise((resolve, reject) => {
+                const tx = db.transaction(['roles'], 'readwrite');
+                const store = tx.objectStore('roles');
+                const request = store.put(role);
+                
+                request.onsuccess = () => {
+                    log(`💾 Saved role ${role.id} to IndexedDB`, 'success');
+                    resolve(request.result);
+                };
+                request.onerror = () => {
+                    log(`❌ Failed to save role: ${request.error}`, 'error');
+                    reject(request.error);
+                };
+            });
+        }
+        
+        // Simulate offline
+        function simulateOffline() {
+            isOnline = false;
+            log('📴 Simulated OFFLINE mode', 'info');
+            checkStatus();
+        }
+        
+        // Simulate online
+        function simulateOnline() {
+            isOnline = true;
+            log('📡 Simulated ONLINE mode', 'success');
+            checkStatus();
+        }
+        
+        // Test offline edit
+        async function testOfflineEdit() {
+            if (isOnline) {
+                alert('Please go offline first!');
+                return;
+            }
+            
+            log('🧪 Starting offline edit test...');
+            
+            const roles = await getAllRoles();
+            if (roles.length === 0) {
+                alert('No roles found! Please add a role first.');
+                return;
+            }
+            
+            const roleToEdit = roles[0];
+            log(`📝 Editing role: ${roleToEdit.name} (ID: ${roleToEdit.id})`);
+            
+            const editedRole = {
+                ...roleToEdit,
+                name: roleToEdit.name + ' [EDITED OFFLINE]',
+                description: 'Edited at ' + new Date().toLocaleTimeString(),
+                updated_at: new Date().toISOString()
+            };
+            
+            log('💾 Saving edited role to IndexedDB...');
+            await saveRole(editedRole);
+            
+            log('📋 Adding to sync queue...');
+            await addToQueue({
+                module: 'roles',
+                action: 'update',
+                data: editedRole
+            });
+            
+            log('✅ OFFLINE EDIT COMPLETE!', 'success');
+            log('🔄 Now refresh the page (F5) and check if edit persists', 'info');
+            
+            await checkStatus();
+        }
+        
+        // Add to queue
+        async function addToQueue(item) {
+            return new Promise((resolve, reject) => {
+                const tx = db.transaction(['sync_queue'], 'readwrite');
+                const store = tx.objectStore('sync_queue');
+                const request = store.add({
+                    ...item,
+                    timestamp: Date.now()
+                });
+                
+                request.onsuccess = () => {
+                    log(`📋 Added to queue: ${item.action}`, 'success');
+                    resolve(request.result);
+                };
+                request.onerror = () => reject(request.error);
+            });
+        }
+        
+        // Show DB contents
+        async function showDBContents() {
+            const container = document.getElementById('dbContents');
+            container.style.display = 'block';
+            
+            const roles = await getAllRoles();
+            const queue = await getQueue();
+            
+            container.textContent = '=== ROLES ===\n' + 
+                JSON.stringify(roles, null, 2) + 
+                '\n\n=== SYNC QUEUE ===\n' + 
+                JSON.stringify(queue, null, 2);
+        }
+        
+        // Clear all data
+        async function clearAllData() {
+            if (!confirm('Clear all data? This will delete everything from IndexedDB!')) {
+                return;
+            }
+            
+            const tx = db.transaction(['roles', 'sync_queue'], 'readwrite');
+            await tx.objectStore('roles').clear();
+            await tx.objectStore('sync_queue').clear();
+            
+            log('🗑️ All data cleared!', 'info');
+            await checkStatus();
+        }
+        
+        // Start monitoring
+        function startMonitoring() {
+            setInterval(checkStatus, 5000);
+        }
+        
+        // Log
+        function log(message, type = 'info') {
+            const logDiv = document.getElementById('testLog');
+            const time = new Date().toLocaleTimeString();
+            const line = document.createElement('div');
+            line.className = 'log-line ' + type;
+            line.textContent = `[${time}] ${message}`;
+            logDiv.appendChild(line);
+            logDiv.scrollTop = logDiv.scrollHeight;
+        }
+        
+        // Clear log
+        function clearLog() {
+            document.getElementById('testLog').innerHTML = '';
+        }
+    </script>
+</body>
+</html>
