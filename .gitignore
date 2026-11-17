@@ -19,3 +19,6 @@ vendor/*.zip
 
 # Local Claude Code settings
 .claude/settings.local.json
+
+# Real DB credentials / BASE_URL differ per machine. Template: config/database.example.php
+config/database.php

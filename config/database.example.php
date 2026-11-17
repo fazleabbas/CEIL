@@ -1,15 +1,14 @@
 <?php
 /**
  * Database Configuration
- * Update these settings according to your server
+ * TEMPLATE. Copy to config/database.php and fill in. The real file is not in git.
  */
 
 // Database credentials
 define('DB_HOST', 'localhost');
-define('DB_USER', 'root');  // Change this
-define('DB_PASS', '');      // Change this
-define('DB_NAME', 'cei'); // Change this
-//define('DB_NAME', 'asmaa'); // Change this
+define('DB_USER', 'your_db_user');
+define('DB_PASS', 'your_db_password');
+define('DB_NAME', 'your_db_name');
 define('DB_CHARSET', 'utf8mb4');
 
 // Timezone
@@ -27,7 +26,7 @@ ini_set('session.cookie_secure', 0); // Set to 1 if using HTTPS
 // Application settings
 define('APP_NAME', 'FIS - LITE');
 define('APP_VERSION', '1.0');
-define('BASE_URL', 'http://localhost:8080/simple_fis_sync_cei/'); // Update this
+define('BASE_URL', 'https://your-domain/'); // trailing slash required
 define('DEMO_MODE', true); // Set to false for production/live setups
 
 // File upload settings
