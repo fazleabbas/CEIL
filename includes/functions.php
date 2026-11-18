@@ -1874,7 +1874,10 @@ function bomBoqLinkAvailable($conn) {
  * `status` key comes from a pre-0049 tenant and keeps the old behaviour.
  *
  *   draft            edit, delete, send for approval
- *   pending_approval nothing but approve / reject (bom.approve)
+ *   pending_approval approve / reject, and EDIT by an approver (bom.approve):
+ *                    the approver corrects quantities on the ordinary form,
+ *                    the BOM stays pending, and each such save is logged as
+ *                    'edit_by_approver' (getBomApproverChangeLog())
  *   approved         revise (back to draft, needs approving again)
  *   rejected         delete*, revise
  *
@@ -1882,9 +1885,114 @@ function bomBoqLinkAvailable($conn) {
  *   version in force, and deleting it would remove that too.
  */
 function bomCanEdit($bom) {
-    if (!hasPermission('bom', 'edit')) return false;
     $status = $bom['status'] ?? null;
-    return $status === null || $status === 'draft';
+    if ($status === null || $status === 'draft') return hasPermission('bom', 'edit');
+    if ($status === 'pending_approval') return hasPermission('bom', 'approve');
+    return false;
+}
+
+/**
+ * Whether saving this BOM counts as an approver's edit (logged and shown in
+ * the BOM's change history) rather than the creator's ordinary draft edit.
+ */
+function bomIsApproverEdit($bom) {
+    return ($bom['status'] ?? null) === 'pending_approval';
+}
+
+/**
+ * Changes approvers made to a pending BOM, newest first. Each audit row
+ * carries a ready-to-render 'changes' list with product names resolved when
+ * it was written. Same shape as getRequisitionChangeLog().
+ *
+ * @return array List of ['created_at', 'user_name', 'changes' => [...]]
+ */
+function getBomApproverChangeLog($conn, $bomId) {
+    $bomId = (int)$bomId;
+    $out = [];
+    if ($bomId <= 0) {
+        return $out;
+    }
+    try {
+        $stmt = $conn->prepare("
+            SELECT a.created_at, a.new_values, u.name AS user_name
+            FROM audit_log a
+            LEFT JOIN users u ON a.user_id = u.id
+            WHERE a.module = 'bom'
+              AND a.action = 'edit_by_approver'
+              AND a.record_id = ?
+            ORDER BY a.id DESC
+        ");
+        $stmt->execute([$bomId]);
+        foreach ($stmt->fetchAll(PDO::FETCH_ASSOC) as $row) {
+            $decoded = json_decode((string)$row['new_values'], true);
+            $changes = (is_array($decoded) && !empty($decoded['changes']) && is_array($decoded['changes']))
+                ? $decoded['changes'] : [];
+            if (empty($changes)) continue;
+            $out[] = ['created_at' => $row['created_at'], 'user_name' => $row['user_name'], 'changes' => $changes];
+        }
+    } catch (Throwable $e) {
+        return [];
+    }
+    return $out;
+}
+
+/**
+ * Per-product quantity + rate of a BOM's current lines, with product names,
+ * for building an approver change list. Rate is the quantity-weighted rate when
+ * a product sits on several lines.
+ *
+ * @return array product_id => ['name', 'qty', 'rate']
+ */
+function bomProductTotals($conn, $bomId) {
+    $stmt = $conn->prepare("
+        SELECT bd.product_id, p.name, SUM(bd.total_quantity) AS qty,
+               SUM(bd.total_quantity * bd.rate) AS value
+        FROM bom_details bd
+        LEFT JOIN products p ON p.id = bd.product_id
+        WHERE bd.bom_id = ?
+        GROUP BY bd.product_id, p.name
+        ORDER BY MIN(bd.id)
+    ");
+    $stmt->execute([(int)$bomId]);
+    $out = [];
+    foreach ($stmt->fetchAll(PDO::FETCH_ASSOC) as $r) {
+        $qty = (float)$r['qty'];
+        $out[(int)$r['product_id']] = [
+            'name' => $r['name'] !== null ? $r['name'] : ('#' . $r['product_id']),
+            'qty'  => $qty,
+            'rate' => $qty > 0 ? (float)$r['value'] / $qty : 0.0,
+        ];
+    }
+    return $out;
+}
+
+/**
+ * Compare two bomProductTotals() maps and list what changed:
+ * item_added / item_removed / item_qty / item_rate, values pre-formatted.
+ */
+function bomDiffProductTotals(array $before, array $after) {
+    $fq = function ($n) { return rtrim(rtrim(number_format($n, 3, '.', ','), '0'), '.'); };
+    $fr = function ($n) { return number_format($n, 2, '.', ','); };
+    $changes = [];
+    foreach ($after as $pid => $a) {
+        if (!isset($before[$pid])) {
+            $changes[] = ['type' => 'item_added', 'label' => $a['name'], 'to' => $fq($a['qty'])];
+            continue;
+        }
+        $b = $before[$pid];
+        if (abs($b['qty'] - $a['qty']) > 0.0005) {
+            $changes[] = ['type' => 'item_qty', 'label' => $a['name'], 'from' => $fq($b['qty']), 'to' => $fq($a['qty'])];
+        }
+        if (abs($b['rate'] - $a['rate']) > 0.005) {
+            $changes[] = ['type' => 'item_rate', 'label' => $a['name'], 'from' => $fr($b['rate']), 'to' => $fr($a['rate'])];
+        }
+    }
+    foreach ($before as $pid => $b) {
+        if (!isset($after[$pid])) {
+            $changes[] = ['type' => 'item_removed', 'label' => $b['name'], 'from' => $fq($b['qty'])];
+        }
+    }
+    return $changes;
 }
 
 function bomCanDelete($bom) {

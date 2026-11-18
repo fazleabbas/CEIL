@@ -5,7 +5,9 @@ require_once '../../includes/functions.php';
 $isEdit = isset($_GET['id']) && !empty($_GET['id']);
 $pageTitle = $isEdit ? __('edit_bom') : __('new_bom');
 
-if (!hasPermission('bom', $isEdit ? 'edit' : 'create')) {
+// An approver may edit a BOM pending approval without holding bom.edit;
+// bomCanEdit() below decides per status.
+if (!($isEdit ? (hasPermission('bom', 'edit') || hasPermission('bom', 'approve')) : hasPermission('bom', 'create'))) {
     setAlert(__('no_permission'), 'danger');
     redirect('');
 }
@@ -185,14 +187,18 @@ if ($_SERVER['REQUEST_METHOD'] == 'POST') {
     // The page gate checked ?id=, but edit_id comes from the POST body: re-check
     // it, so a pending or approved BOM cannot be rewritten by a hand-made POST.
     $existingBoqId = null;
+    $approverEdit = false;
     if ($editId) {
         $chk = $conn->prepare("SELECT * FROM boms WHERE id = ?");
         $chk->execute([$editId]);
         $existingBom = $chk->fetch();
         if (!$existingBom || !bomCanEdit($existingBom)) {
             $errors[] = __('bom_only_draft_edit');
-        } elseif ($hasBoqCol) {
-            $existingBoqId = !empty($existingBom['boq_id']) ? (int)$existingBom['boq_id'] : null;
+        } else {
+            $approverEdit = bomIsApproverEdit($existingBom);
+            if ($hasBoqCol) {
+                $existingBoqId = !empty($existingBom['boq_id']) ? (int)$existingBom['boq_id'] : null;
+            }
         }
     }
 
@@ -253,7 +259,19 @@ if ($_SERVER['REQUEST_METHOD'] == 'POST') {
             // title column is included only when it exists (migration 0035).
             $titleSet = $hasTitleCol ? ', title = ?' : '';
             $boqSet = $hasBoqCol ? ', boq_id = ?' : '';
+            $approverChanges = [];
             if ($editId) {
+                // Re-check INSIDE the transaction: the BOM may have been approved
+                // or rejected since the form was loaded, and only a draft (or a
+                // pending BOM, for an approver) may be rewritten.
+                $lock = $conn->prepare("SELECT * FROM boms WHERE id = ? FOR UPDATE");
+                $lock->execute([$editId]);
+                $lockedBom = $lock->fetch();
+                if (!$lockedBom || !bomCanEdit($lockedBom) || bomIsApproverEdit($lockedBom) !== $approverEdit) {
+                    throw new Exception(__('bom_only_draft_edit'));
+                }
+                $totalsBefore = $approverEdit ? bomProductTotals($conn, $editId) : [];
+
                 $stmt = $conn->prepare("
                     UPDATE boms
                     SET bom_date = ?, location_id = ?, cost_centre_id = ?, remarks = ?{$titleSet}{$boqSet}
@@ -319,10 +337,36 @@ if ($_SERVER['REQUEST_METHOD'] == 'POST') {
                 }
             }
 
+            if ($editId && $approverEdit) {
+                $approverChanges = bomDiffProductTotals($totalsBefore, bomProductTotals($conn, $bomId));
+            }
+
             $conn->commit();
 
             $action = $editId ? 'update' : 'create';
             logAudit('bom', $action, $bomId);
+            // An approver's change to a pending BOM: its own greppable action with
+            // a ready-to-render change list, shown on the BOM view. A save that
+            // changed no quantity, rate or item writes no such row.
+            if (!empty($approverChanges)) {
+                logAudit('bom', 'edit_by_approver', $bomId, null, ['changes' => $approverChanges]);
+                $creatorId = (int)($lockedBom['created_by'] ?? 0);
+                if ($creatorId > 0 && $creatorId !== (int)getUserId()) {
+                    try {
+                        createNotification(
+                            $creatorId,
+                            'bom_edited_by_approver',
+                            'BOM Changed by Approver',
+                            'The approver changed quantities on BOM ' . $lockedBom['bom_number'],
+                            BASE_URL . 'modules/transactions/bom_view.php?id=' . (int)$bomId,
+                            (int)$bomId,
+                            'bom'
+                        );
+                    } catch (Exception $e) {
+                        error_log('bom approver-edit notify failed: ' . $e->getMessage());
+                    }
+                }
+            }
             setAlert($editId ? __('bom_updated') : __('bom_created'), 'success');
             redirect('modules/transactions/bom_view.php?id=' . $bomId);
 
@@ -442,6 +486,11 @@ if ($hasBoqCol) {
                         <li><?php echo htmlspecialchars($error); ?></li>
                         <?php endforeach; ?>
                     </ul>
+                </div>
+                <?php endif; ?>
+                <?php if ($isEdit && bomIsApproverEdit($bom)): ?>
+                <div class="alert alert-info">
+                    <i class="bi bi-info-circle"></i> <?php _e('bom_approver_edit_notice'); ?>
                 </div>
                 <?php endif; ?>
                 <form method="POST" id="bomForm">

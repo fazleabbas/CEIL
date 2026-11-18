@@ -1,3 +1,30 @@
+# FEATURE: Approver can change quantities on a pending BOM [x]
+**Status: COMPLETED** — no schema change, no migration. Verified with 2
+temporary users (approver without `bom.edit`, editor without `bom.approve`) on
+the PHP 7.4 built-in server; both removed, boms / bom_details / breakdowns diff
+IDENTICAL after restore.
+
+**Files (MODIFIED, 5):** `includes/functions.php`, `modules/transactions/bom.php`,
+`bom_view.php`, `lang/en.php`, `lang/sw.php`
+
+## Decisions (user-confirmed)
+- NOT qty boxes in the approve modal: breakdowns must sum to each line total,
+  so the approver uses the ORDINARY BOM form ("Edit Quantities" on the view).
+  Everything the form validates (breakdowns, BOQ excess reasons) still applies.
+- `bomCanEdit()`: draft = `bom.edit`; **pending_approval = `bom.approve`**.
+  The creator still cannot edit a pending BOM. Page gate admits edit OR approve.
+- Saving keeps the BOM PENDING; the approver then approves as usual.
+- Approver may change anything on the form. Each save that changes a quantity,
+  rate or item writes audit action **`edit_by_approver`** with a ready-to-render
+  `changes` list (`bomDiffProductTotals()`, per product); a no-change save writes
+  none. Shown as "Changes Made by the Approver" on the view (`no-print`).
+  The creator is notified (`bom_edited_by_approver`).
+- The save re-checks the status `FOR UPDATE` inside the transaction, so a BOM
+  approved/rejected after the form loaded cannot be rewritten.
+
+---
+---
+
 # FEATURE: BOM issue summary + end of BOM auto approval [x]
 **Status: COMPLETED** — verified with a temporary Admin session file (removed)
 on the PHP 7.4 built-in server. bom_details / requisition_vouchers / details

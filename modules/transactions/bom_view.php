@@ -119,6 +119,9 @@ $issueSummary = bomShowsIssueSummary($bom) ? getBomIssueSummary($id, $conn) : nu
 $issueFromSnapshot = $issueSummary !== null && $status !== null && $status !== 'approved';
 $canViewRv = hasPermission('requisition_vouchers', 'view');
 
+// Changes approvers made while the BOM was pending approval.
+$approverChangeLog = $hasApproval ? getBomApproverChangeLog($conn, $id) : [];
+
 require_once '../../includes/header.php';
 
 $statusBadge = function ($s) {
@@ -398,6 +401,56 @@ $statusBadge = function ($s) {
                 <?php endif; ?>
                 <?php endif; ?>
 
+                <?php if (!empty($approverChangeLog)): ?>
+                <!-- Changes approvers made while the BOM was pending. Screen only. -->
+                <div class="mt-4 no-print">
+                    <h6 class="text-muted mb-2"><i class="bi bi-clock-history"></i> <?php _e('bom_approver_changes'); ?></h6>
+                    <div class="table-responsive">
+                        <table class="table table-sm table-bordered align-middle">
+                            <thead class="table-light">
+                                <tr>
+                                    <th style="width:18%;"><?php _e('date'); ?></th>
+                                    <th style="width:22%;"><?php _e('edited_by'); ?></th>
+                                    <th><?php _e('rv_what_changed'); ?></th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                <?php foreach ($approverChangeLog as $logEntry): ?>
+                                <tr>
+                                    <td class="small"><?php echo formatDateTime($logEntry['created_at']); ?></td>
+                                    <td class="small"><?php echo htmlspecialchars($logEntry['user_name'] ?: '-'); ?></td>
+                                    <td>
+                                        <ul class="mb-0 ps-3 small">
+                                            <?php foreach ($logEntry['changes'] as $ch):
+                                                $chLabel = htmlspecialchars((string)($ch['label'] ?? ''));
+                                                $chFrom = htmlspecialchars((string)($ch['from'] ?? ''));
+                                                $chTo = htmlspecialchars((string)($ch['to'] ?? ''));
+                                                $wasNow = '<span class="text-danger">' . $chFrom . '</span> <i class="bi bi-arrow-right text-muted"></i> <span class="text-success">' . $chTo . '</span>';
+                                                switch ($ch['type'] ?? '') {
+                                                    case 'item_qty':
+                                                        echo '<li><strong>' . $chLabel . '</strong> &mdash; ' . htmlspecialchars(__('quantity')) . ': ' . $wasNow . '</li>';
+                                                        break;
+                                                    case 'item_rate':
+                                                        echo '<li><strong>' . $chLabel . '</strong> &mdash; ' . htmlspecialchars(__('rate')) . ': ' . $wasNow . '</li>';
+                                                        break;
+                                                    case 'item_added':
+                                                        echo '<li class="text-success"><i class="bi bi-plus-circle"></i> ' . htmlspecialchars(__('rv_change_item_added')) . ': <strong>' . $chLabel . '</strong> (' . $chTo . ')</li>';
+                                                        break;
+                                                    case 'item_removed':
+                                                        echo '<li class="text-danger"><i class="bi bi-dash-circle"></i> ' . htmlspecialchars(__('rv_change_item_removed')) . ': <strong>' . $chLabel . '</strong> (' . $chFrom . ')</li>';
+                                                        break;
+                                                }
+                                            endforeach; ?>
+                                        </ul>
+                                    </td>
+                                </tr>
+                                <?php endforeach; ?>
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+                <?php endif; ?>
+
                 <!-- Status actions (migration 0049) -->
                 <?php if ($status === 'draft' && ($canSendBom || $canEditBom)): ?>
                 <div class="mt-4 no-print">
@@ -415,6 +468,10 @@ $statusBadge = function ($s) {
                     <?php if ($canApprove): ?>
                     <button type="button" class="btn btn-success" data-bs-toggle="modal" data-bs-target="#approveBomModal"><i class="bi bi-check-circle"></i> <?php _e('approve'); ?></button>
                     <button type="button" class="btn btn-danger" data-bs-toggle="modal" data-bs-target="#rejectBomModal"><i class="bi bi-x-circle"></i> <?php _e('reject'); ?></button>
+                    <?php if ($canEditBom): ?>
+                    <a href="bom.php?id=<?php echo $id; ?>" class="btn btn-outline-primary"><i class="bi bi-pencil"></i> <?php _e('bom_edit_quantities'); ?></a>
+                    <div class="small text-muted mt-2"><i class="bi bi-info-circle"></i> <?php _e('bom_approver_edit_hint'); ?></div>
+                    <?php endif; ?>
                     <?php else: ?>
                     <div class="alert alert-info mb-0"><i class="bi bi-hourglass-split"></i> <?php _e('status_pending_approval'); ?></div>
                     <?php endif; ?>
