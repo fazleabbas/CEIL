@@ -20,8 +20,8 @@ Test it locally before pushing. A `sql/fixes/*_LIVE.sql` is no longer needed.
 - Verified locally on a full copy of cei (`cei_migtest`, dropped): no-baseline
   refusal, baseline 53, apply + backup (59 tables in the dump), failure ->
   block -> skip, mysqldump missing -> blocked with nothing applied, web 404.
-- NOT `api/run-migrations.php`: that one is for FIS Lite tenants and holds the
-  Lite central DB password in plain text (flagged to the user, not changed).
+- `api/run-migrations.php` (FIS Lite tenants runner, held the Lite central DB
+  password in plain text) was REMOVED from this repo on user request.
 
 ---
 ---
