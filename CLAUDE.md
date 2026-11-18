@@ -1,3 +1,31 @@
+# FEATURE: Auto-apply migrations on cei.fis.co.tz [x]
+**Files (NEW, 1):** `cli/run-cei-migrations.php` (CLI only, 404 from a browser).
+Run by the server cron (`~/cei_autopull.sh`) after each `git pull`.
+
+**EVERY MIGRATION NOW RUNS UNATTENDED ON PRODUCTION within ~5 minutes of a
+push.** So a migration must be safe to run as-is: idempotent where possible,
+no literal semicolons inside strings, no destructive step without a guard.
+Test it locally before pushing. A `sql/fixes/*_LIVE.sql` is no longer needed.
+
+- Tracks applied files in table `migrations` (same shape as the multi-tenant
+  runner). Refuses to run until `--baseline=NNNN` has marked the hand-applied
+  ones (production baselined at 0053).
+- Full gzipped `mysqldump` to `~/cei_db_backups/` (last 10) before applying;
+  no backup = nothing applied.
+- First failure stops, is not recorded, and writes `~/cei_migrate.BLOCKED`;
+  every later run exits until that file is deleted. A failed migration may be
+  HALF applied (mysql CLI is not transactional for DDL), hence the block.
+- Log `~/cei_migrate.log`; silent when nothing is pending. Password goes via
+  `MYSQL_PWD`, never on a command line.
+- Verified locally on a full copy of cei (`cei_migtest`, dropped): no-baseline
+  refusal, baseline 53, apply + backup (59 tables in the dump), failure ->
+  block -> skip, mysqldump missing -> blocked with nothing applied, web 404.
+- NOT `api/run-migrations.php`: that one is for FIS Lite tenants and holds the
+  Lite central DB password in plain text (flagged to the user, not changed).
+
+---
+---
+
 # FEATURE: Approver can change quantities on a pending BOM [x]
 **Status: COMPLETED** — no schema change, no migration. Verified with 2
 temporary users (approver without `bom.edit`, editor without `bom.approve`) on
