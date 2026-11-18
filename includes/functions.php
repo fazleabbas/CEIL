@@ -1601,19 +1601,12 @@ function getBomProductBalances($bomId, $conn) {
     }
 
     // BOM quantity per product (a product could appear on more than one line).
-    $qtyStmt = $conn->prepare("
-        SELECT product_id, SUM(total_quantity) AS bom_qty
-        FROM bom_details
-        WHERE bom_id = ?
-        GROUP BY product_id
-    ");
-    $qtyStmt->execute([$bomId]);
-    foreach ($qtyStmt->fetchAll(PDO::FETCH_ASSOC) as $row) {
-        $pid = (int)$row['product_id'];
+    // While a revision is open this is the last APPROVED quantity (0053).
+    foreach (getBomApprovedQuantities($bomId, $conn) as $pid => $bomQty) {
         $balances[$pid] = [
-            'bom_qty'     => (float)$row['bom_qty'],
+            'bom_qty'     => $bomQty,
             'transferred' => 0.0,
-            'balance'     => (float)$row['bom_qty'],
+            'balance'     => $bomQty,
         ];
     }
 
@@ -1641,6 +1634,200 @@ function getBomProductBalances($bomId, $conn) {
     }
 
     return $balances;
+}
+
+/**
+ * Whether boms keeps an approved snapshot during a revision (migration 0053).
+ */
+function bomSnapshotAvailable($conn) {
+    static $has = null;
+    if ($has === null) {
+        try {
+            $has = (bool)$conn->query("
+                SELECT COUNT(*) FROM INFORMATION_SCHEMA.COLUMNS
+                WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'boms' AND COLUMN_NAME = 'approved_snapshot'
+            ")->fetchColumn();
+        } catch (Throwable $e) {
+            $has = false;
+        }
+    }
+    return $has;
+}
+
+/**
+ * Last approved quantities kept while a revision is open.
+ * Same JSON shape as the BOQ snapshot: {product_id: quantity}.
+ *
+ * @param string|null $json boms.approved_snapshot
+ * @return array product_id => quantity, empty when no revision is open
+ */
+function bomSnapshotQuantities($json) {
+    return boqSnapshotQuantities($json);
+}
+
+/**
+ * The quantity per product a BOM stands for: the last APPROVED quantities while
+ * a revision is open (boms.approved_snapshot), otherwise bom_details summed per
+ * product. Products keep the order of their first BOM line.
+ *
+ * @return array product_id => quantity
+ */
+function getBomApprovedQuantities($bomId, $conn) {
+    $bomId = (int)$bomId;
+    if ($bomId <= 0) {
+        return [];
+    }
+    if (bomSnapshotAvailable($conn)) {
+        $snapStmt = $conn->prepare("SELECT approved_snapshot FROM boms WHERE id = ?");
+        $snapStmt->execute([$bomId]);
+        $approved = bomSnapshotQuantities($snapStmt->fetchColumn());
+        if (!empty($approved)) {
+            return $approved;
+        }
+    }
+    $qtyStmt = $conn->prepare("
+        SELECT product_id, SUM(total_quantity) AS bom_qty
+        FROM bom_details
+        WHERE bom_id = ?
+        GROUP BY product_id
+        ORDER BY MIN(id)
+    ");
+    $qtyStmt->execute([$bomId]);
+    $out = [];
+    foreach ($qtyStmt->fetchAll(PDO::FETCH_ASSOC) as $row) {
+        $out[(int)$row['product_id']] = (float)$row['bom_qty'];
+    }
+    return $out;
+}
+
+/**
+ * Whether the BOM issue summary applies: an approved BOM, or one under revision
+ * that still holds its approved snapshot. A pre-0049 row (no status) always.
+ */
+function bomShowsIssueSummary($bom) {
+    $status = $bom['status'] ?? null;
+    if ($status === null || $status === 'approved') {
+        return true;
+    }
+    return !empty($bom['approved_snapshot']);
+}
+
+/**
+ * BOM issue summary: per product, the approved BOM quantity, the quantity
+ * issued (dispatched on transfers) from requisitions linked to the BOM, and the
+ * balance. Issued is requisition_voucher_details.transferred_quantity, which a
+ * transfer reversal reduces, so it is the net quantity that left.
+ *
+ * Products issued against the BOM but not on it are included with
+ * on_bom = false and bom_qty 0, after the BOM's own products.
+ *
+ * @return array product_id => ['name','unit','bom_qty','issued','balance',
+ *                               'on_bom','rvs' => [['id','number','qty'], ...]]
+ */
+function getBomIssueSummary($bomId, $conn) {
+    $bomId = (int)$bomId;
+    $out = [];
+    if ($bomId <= 0) {
+        return $out;
+    }
+
+    foreach (getBomApprovedQuantities($bomId, $conn) as $pid => $qty) {
+        $out[$pid] = ['name' => '', 'unit' => '', 'bom_qty' => $qty, 'issued' => 0.0, 'balance' => $qty, 'on_bom' => true, 'rvs' => []];
+    }
+
+    $issStmt = $conn->prepare("
+        SELECT rvd.product_id, rv.id AS rv_id, rv.voucher_number, SUM(rvd.transferred_quantity) AS issued
+        FROM requisition_voucher_details rvd
+        INNER JOIN requisition_vouchers rv ON rvd.requisition_id = rv.id
+        WHERE rv.bom_id = ?
+        GROUP BY rvd.product_id, rv.id, rv.voucher_number
+        HAVING SUM(rvd.transferred_quantity) > 0
+        ORDER BY rv.id
+    ");
+    $issStmt->execute([$bomId]);
+    foreach ($issStmt->fetchAll(PDO::FETCH_ASSOC) as $row) {
+        $pid = (int)$row['product_id'];
+        if (!isset($out[$pid])) {
+            $out[$pid] = ['name' => '', 'unit' => '', 'bom_qty' => 0.0, 'issued' => 0.0, 'balance' => 0.0, 'on_bom' => false, 'rvs' => []];
+        }
+        $qty = (float)$row['issued'];
+        $out[$pid]['issued'] += $qty;
+        $out[$pid]['balance'] = $out[$pid]['bom_qty'] - $out[$pid]['issued'];
+        $out[$pid]['rvs'][] = ['id' => (int)$row['rv_id'], 'number' => $row['voucher_number'], 'qty' => $qty];
+    }
+
+    if (!empty($out)) {
+        $ids = implode(',', array_map('intval', array_keys($out)));
+        foreach ($conn->query("SELECT id, name, unit FROM products WHERE id IN ($ids)")->fetchAll(PDO::FETCH_ASSOC) as $p) {
+            $out[(int)$p['id']]['name'] = $p['name'];
+            $out[(int)$p['id']]['unit'] = $p['unit'];
+        }
+    }
+    return $out;
+}
+
+/**
+ * Issue progress for a page of BOMs, in 2 queries: how many of each BOM's
+ * products are fully issued, and whether any product was issued beyond its BOM
+ * quantity. Only BOMs for which bomShowsIssueSummary() holds are included.
+ * Uses the same quantities and tolerance as getBomIssueSummary().
+ *
+ * @param array $boms rows from boms (need id, status, approved_snapshot)
+ * @return array bom_id => ['done' => int, 'total' => int, 'over' => bool]
+ */
+function getBomIssueProgress(array $boms, $conn) {
+    $qty = [];
+    $liveIds = [];
+    foreach ($boms as $b) {
+        if (!bomShowsIssueSummary($b)) continue;
+        $bid = (int)$b['id'];
+        $snap = bomSnapshotQuantities($b['approved_snapshot'] ?? null);
+        if (!empty($snap)) {
+            $qty[$bid] = $snap;
+        } else {
+            $qty[$bid] = [];
+            $liveIds[] = $bid;
+        }
+    }
+    if (empty($qty)) {
+        return [];
+    }
+
+    if (!empty($liveIds)) {
+        $in = implode(',', array_map('intval', $liveIds));
+        foreach ($conn->query("SELECT bom_id, product_id, SUM(total_quantity) AS q FROM bom_details WHERE bom_id IN ($in) GROUP BY bom_id, product_id")->fetchAll(PDO::FETCH_ASSOC) as $r) {
+            $qty[(int)$r['bom_id']][(int)$r['product_id']] = (float)$r['q'];
+        }
+    }
+
+    $issued = [];
+    $in = implode(',', array_map('intval', array_keys($qty)));
+    foreach ($conn->query("
+        SELECT rv.bom_id, rvd.product_id, SUM(rvd.transferred_quantity) AS q
+        FROM requisition_voucher_details rvd
+        INNER JOIN requisition_vouchers rv ON rvd.requisition_id = rv.id
+        WHERE rv.bom_id IN ($in)
+        GROUP BY rv.bom_id, rvd.product_id
+    ")->fetchAll(PDO::FETCH_ASSOC) as $r) {
+        $issued[(int)$r['bom_id']][(int)$r['product_id']] = (float)$r['q'];
+    }
+
+    $out = [];
+    foreach ($qty as $bid => $products) {
+        $done = 0;
+        $over = false;
+        foreach ($products as $pid => $q) {
+            $iss = $issued[$bid][$pid] ?? 0.0;
+            if ($iss >= $q - 0.0005) $done++;
+            if ($iss > $q + 0.0005) $over = true;
+        }
+        // Issued against the BOM but not on it at all.
+        foreach ($issued[$bid] ?? [] as $pid => $iss) {
+            if (!isset($products[$pid]) && $iss > 0.0005) $over = true;
+        }
+        $out[$bid] = ['done' => $done, 'total' => count($products), 'over' => $over];
+    }
+    return $out;
 }
 
 /**
@@ -1689,7 +1876,10 @@ function bomBoqLinkAvailable($conn) {
  *   draft            edit, delete, send for approval
  *   pending_approval nothing but approve / reject (bom.approve)
  *   approved         revise (back to draft, needs approving again)
- *   rejected         delete, revise
+ *   rejected         delete*, revise
+ *
+ * * Not while approved_snapshot is set (0053): that BOM has an approved
+ *   version in force, and deleting it would remove that too.
  */
 function bomCanEdit($bom) {
     if (!hasPermission('bom', 'edit')) return false;
@@ -1700,7 +1890,8 @@ function bomCanEdit($bom) {
 function bomCanDelete($bom) {
     if (!hasPermission('bom', 'delete')) return false;
     $status = $bom['status'] ?? null;
-    return $status === null || $status === 'draft' || $status === 'rejected';
+    if ($status === null) return true;
+    return ($status === 'draft' || $status === 'rejected') && empty($bom['approved_snapshot']);
 }
 
 function bomCanSendForApproval($bom) {

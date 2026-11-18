@@ -1,3 +1,52 @@
+# FEATURE: BOM issue summary + end of BOM auto approval [x]
+**Status: COMPLETED** — verified with a temporary Admin session file (removed)
+on the PHP 7.4 built-in server. bom_details / requisition_vouchers / details
+diff IDENTICAL after cleanup. **Needs migration 0053.**
+
+**Files (NEW, 1):** `sql/migrations/0053_bom_approved_snapshot_and_end_auto_approval.sql`
+**Files (MODIFIED, 6):** `includes/functions.php`, `api/bom-sync.php`,
+`modules/transactions/bom_view.php`, `bom_list.php`, `lang/en.php`, `lang/sw.php`
+
+## Decisions (user-confirmed)
+- "Auto approval" = the BOMs 0049 made approved with no approver. 0053 moves
+  every `approved` BOM with NULL `approved_at` AND `approved_by` to
+  `pending_approval` (updated_at kept). No notification: approvers find them
+  with the Pending filter. "Auto Approved" label removed from `bom_view.php`
+  only; the lang key stays, `boq_view.php` still uses it.
+- Issued = `requisition_voucher_details.transferred_quantity` over RVs linked
+  to the BOM (net of transfer reversals, which decrement it). Same figure as
+  `getBomProductBalances()`.
+- Summary card on the BOM view (PRINTS; the per-RV rows are `no-print`):
+  Product | Unit | BOM Qty | Issued | Balance. Products issued but not on the
+  BOM are listed as "Not on BOM". Shown only per `bomShowsIssueSummary()`:
+  approved, or under revision holding a snapshot.
+- List column "Issued" = products fully issued `x / y` (no %: mixed units),
+  red icon when anything is over or not on the BOM. `getBomIssueProgress()`
+  batches the page in 2 queries.
+
+## THE SNAPSHOT (same design as BOQ 0051)
+`boms.approved_snapshot` = JSON `{product_id: qty}`, written when an APPROVED
+BOM is revised, kept through reject + re-revise, cleared only on approve.
+`getBomApprovedQuantities()` reads it, so BOTH the summary and the RV-side BOM
+balance (`getBomProductBalances()`, `api/bom-balances.php`) keep the approved
+figures during a revision. A BOM holding a snapshot cannot be deleted.
+
+## Verification
+Rendered summary vs independent SQL on BOM000001 with RV000010 temporarily
+linked: 43 rows (39 on BOM + 4 not on BOM) IDENTICAL. Revise -> edited qty
+9999 -> summary + bom-balances API still 5025; reject -> revise kept 5025;
+approve cleared it and both showed 9999. Delete of a draft with snapshot
+refused, no delete button. 0 PHP diagnostics on 7 pages. Migration re-run
+harmless.
+
+## Testing environment
+`config/database.php` BASE_URL points to :8080, which is the XAMPP 8.2 Apache
+(DocumentRoot xampp82). Test with `C:\xampp74\php\php.exe -S 127.0.0.1:8174
+-t C:\xampp74\htdocs` instead.
+
+---
+---
+
 # FEATURE: Budget amounts per supplier [x]
 **Status: COMPLETED** — display only, no schema change, no migration. Verified
 on all 30 budgets with a temporary Admin session file (removed).

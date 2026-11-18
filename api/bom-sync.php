@@ -167,10 +167,13 @@ function bomApprove($conn, $data) {
         }
     }
 
+    // Approving is the moment a revision's figures take over, so the approved
+    // snapshot (0053) is cleared here and nowhere else.
+    $clearSnap = bomSnapshotAvailable($conn) ? ', approved_snapshot = NULL' : '';
     $stmt = $conn->prepare("
         UPDATE boms
         SET status = 'approved', approved_by = ?, approved_at = NOW(),
-            approved_by_signature = ?, approve_remark = ?
+            approved_by_signature = ?, approve_remark = ?$clearSnap
         WHERE id = ? AND status = 'pending_approval'
     ");
     $stmt->execute([getUserId(), $sig, ($approveRemark !== '' ? $approveRemark : null), $id]);
@@ -201,6 +204,11 @@ function bomReject($conn, $data) {
  * Clears every approval / rejection field: the old approver's name and
  * signature must not sit on figures they have not seen. Requisitions already
  * linked to the BOM keep their link (see bomLinkError()).
+ *
+ * Revising an APPROVED BOM saves its quantities first (0053), so the issue
+ * summary and the requisition BOM balance keep using the approved figures until
+ * the revision is approved. Revising a REJECTED one keeps whatever snapshot it
+ * has, because its bom_details are unapproved. Same rule as BOQs.
  */
 function bomRevise($conn, $data) {
     if (!hasPermission('bom', 'view')) throw new Exception('No permission');
@@ -208,6 +216,23 @@ function bomRevise($conn, $data) {
     if (!in_array($bom['status'], ['approved', 'rejected'], true)) throw new Exception(__('bom_only_approved_rejected_revise'));
     if (!bomCanRevise($bom)) throw new Exception('No permission');
     $id = (int)$bom['id'];
+
+    $conn->beginTransaction();
+
+    $lock = $conn->prepare("SELECT status FROM boms WHERE id = ? FOR UPDATE");
+    $lock->execute([$id]);
+    $current = $lock->fetchColumn();
+    if (!in_array($current, ['approved', 'rejected'], true)) throw new Exception(__('bom_only_approved_rejected_revise'));
+
+    if ($current === 'approved' && bomSnapshotAvailable($conn)) {
+        $qtyStmt = $conn->prepare("SELECT product_id, SUM(total_quantity) AS qty FROM bom_details WHERE bom_id = ? GROUP BY product_id ORDER BY MIN(id)");
+        $qtyStmt->execute([$id]);
+        $snapshot = [];
+        foreach ($qtyStmt->fetchAll(PDO::FETCH_ASSOC) as $r) {
+            $snapshot[(int)$r['product_id']] = (float)$r['qty'];
+        }
+        $conn->prepare("UPDATE boms SET approved_snapshot = ? WHERE id = ?")->execute([json_encode((object)$snapshot), $id]);
+    }
 
     $stmt = $conn->prepare("
         UPDATE boms
@@ -218,7 +243,9 @@ function bomRevise($conn, $data) {
         WHERE id = ? AND status IN ('approved', 'rejected')
     ");
     $stmt->execute([$id]);
+
+    $conn->commit();
     // Distinct action, so a revision of an APPROVED BOM is greppable.
-    logAudit('bom', 'revise_from_' . $bom['status'], $id);
+    logAudit('bom', 'revise_from_' . $current, $id);
     echo json_encode(['success' => true, 'message' => __('bom_revised')]);
 }

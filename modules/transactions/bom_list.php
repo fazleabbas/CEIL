@@ -96,6 +96,9 @@ $stmt = $conn->prepare("
 ");
 $stmt->execute($params);
 $boms = $stmt->fetchAll();
+// Products fully issued, for approved BOMs (and ones under revision that keep
+// their approved snapshot). Batched for the whole page.
+$issueProgress = getBomIssueProgress($boms, $conn);
 ?>
 
 <div class="row justify-content-center">
@@ -176,6 +179,7 @@ $boms = $stmt->fetchAll();
                                 <th><?php _e('cost_centre'); ?></th>
                                 <th class="text-center"><?php _e('items'); ?></th>
                                 <th class="text-end"><?php _e('total_value'); ?></th>
+                                <th class="text-center" title="<?php _e('bom_list_issued_hint'); ?>"><?php _e('bom_list_issued'); ?></th>
                                 <th><?php _e('created_by'); ?></th>
                                 <?php if ($hasApproval): ?>
                                 <th class="text-center"><?php _e('status'); ?></th>
@@ -205,6 +209,15 @@ $boms = $stmt->fetchAll();
                                     <span class="badge bg-secondary"><?php echo $b['item_count']; ?></span>
                                 </td>
                                 <td class="text-end"><?php echo formatNumber($b['total_value'], 2); ?></td>
+                                <td class="text-center">
+                                    <?php $ip = $issueProgress[(int)$b['id']] ?? null; ?>
+                                    <?php if ($ip === null): ?>
+                                    <span class="text-muted">-</span>
+                                    <?php else: ?>
+                                    <span class="badge bg-<?php echo $ip['total'] > 0 && $ip['done'] >= $ip['total'] ? 'success' : 'light text-dark border'; ?>"><?php echo (int)$ip['done']; ?> / <?php echo (int)$ip['total']; ?></span>
+                                    <?php if ($ip['over']): ?><i class="bi bi-exclamation-triangle-fill text-danger" title="<?php _e('bom_issue_over'); ?>"></i><?php endif; ?>
+                                    <?php endif; ?>
+                                </td>
                                 <td><?php echo htmlspecialchars($b['created_by_name']); ?></td>
                                 <?php if ($hasApproval): ?>
                                 <td class="text-center"><span class="badge bg-<?php echo $statusBadge($b['status']); ?>"><?php _e('status_' . $b['status']); ?></span></td>

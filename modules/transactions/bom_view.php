@@ -112,6 +112,13 @@ if (bomBoqLinkAvailable($conn) && !empty($bom['boq_id'])) {
 }
 $boqLinked = $boqInfo !== null;
 
+// BOM issue summary: approved BOM qty | issued from linked requisitions |
+// balance, per product. Shown for an approved BOM, or one under revision that
+// still holds its approved snapshot (then the approved figures are shown).
+$issueSummary = bomShowsIssueSummary($bom) ? getBomIssueSummary($id, $conn) : null;
+$issueFromSnapshot = $issueSummary !== null && $status !== null && $status !== 'approved';
+$canViewRv = hasPermission('requisition_vouchers', 'view');
+
 require_once '../../includes/header.php';
 
 $statusBadge = function ($s) {
@@ -318,6 +325,79 @@ $statusBadge = function ($s) {
                 </div>
                 <?php endif; ?>
 
+                <?php if ($issueSummary !== null): ?>
+                <!-- BOM issue summary (0053). Prints; the per-requisition rows do not. -->
+                <h6 class="text-muted mb-2 mt-4"><i class="bi bi-box-arrow-right"></i> <?php _e('bom_issue_summary'); ?></h6>
+                <?php if ($issueFromSnapshot): ?>
+                <div class="alert alert-warning py-2 small"><i class="bi bi-exclamation-triangle"></i> <?php _e('bom_issue_from_snapshot'); ?></div>
+                <?php endif; ?>
+                <div class="small text-muted mb-2 no-print"><i class="bi bi-info-circle"></i> <?php _e('bom_issue_legend'); ?></div>
+                <?php if (empty($issueSummary)): ?>
+                <p class="text-muted small"><?php _e('bom_issue_none'); ?></p>
+                <?php else: ?>
+                <div class="table-responsive">
+                    <table class="table table-bordered table-sm align-middle" id="bomIssueSummary">
+                        <thead class="table-light">
+                            <tr>
+                                <th style="width:4%;"><?php _e('sr'); ?></th>
+                                <th><?php _e('product'); ?></th>
+                                <th style="width:8%;"><?php _e('unit'); ?></th>
+                                <th style="width:13%;" class="text-end"><?php _e('bom_qty'); ?></th>
+                                <th style="width:13%;" class="text-end"><?php _e('bom_issued_qty'); ?></th>
+                                <th style="width:13%;" class="text-end"><?php _e('balance'); ?></th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            <?php $isr = 0; foreach ($issueSummary as $ipid => $is):
+                                $isr++;
+                                $isOver = !$is['on_bom'] || $is['issued'] > $is['bom_qty'] + 0.0005;
+                                $isDone = $is['on_bom'] && !$isOver && $is['issued'] >= $is['bom_qty'] - 0.0005;
+                            ?>
+                            <tr class="<?php echo $isOver ? 'table-danger' : ($isDone ? 'table-success' : ''); ?>">
+                                <td><?php echo $isr; ?></td>
+                                <td>
+                                    <?php echo htmlspecialchars($is['name'] !== '' ? $is['name'] : ('#' . $ipid)); ?>
+                                    <?php if (!$is['on_bom']): ?>
+                                    <span class="badge bg-danger ms-1"><?php _e('bom_not_on_bom'); ?></span>
+                                    <?php endif; ?>
+                                    <?php if (!empty($is['rvs'])): ?>
+                                    <button type="button" class="btn btn-link btn-sm p-0 ms-1 no-print" data-bs-toggle="collapse" data-bs-target="#bomIssueRv<?php echo (int)$ipid; ?>" title="<?php _e('bom_issue_show_rvs'); ?>">
+                                        <i class="bi bi-chevron-down"></i> <?php echo sprintf(__('bom_issue_rv_count'), count($is['rvs'])); ?>
+                                    </button>
+                                    <?php endif; ?>
+                                </td>
+                                <td><?php echo htmlspecialchars($is['unit']); ?></td>
+                                <td class="text-end"><?php echo $is['on_bom'] ? formatNumber($is['bom_qty'], 3) : '-'; ?></td>
+                                <td class="text-end"><?php echo formatNumber($is['issued'], 3); ?></td>
+                                <td class="text-end fw-bold<?php echo $isOver ? ' text-danger' : ''; ?>">
+                                    <?php echo formatNumber($is['balance'], 3); ?>
+                                    <?php if ($isOver): ?><i class="bi bi-exclamation-triangle-fill" title="<?php _e('bom_issue_over'); ?>"></i><?php endif; ?>
+                                </td>
+                            </tr>
+                            <?php if (!empty($is['rvs'])): ?>
+                            <tr class="collapse no-print" id="bomIssueRv<?php echo (int)$ipid; ?>">
+                                <td></td>
+                                <td colspan="5" class="bg-light">
+                                    <?php foreach ($is['rvs'] as $rvRow): ?>
+                                    <span class="me-3 small">
+                                        <?php if ($canViewRv): ?>
+                                        <a href="requisition_voucher_view.php?id=<?php echo (int)$rvRow['id']; ?>"><?php echo htmlspecialchars($rvRow['number']); ?></a>
+                                        <?php else: ?>
+                                        <?php echo htmlspecialchars($rvRow['number']); ?>
+                                        <?php endif; ?>
+                                        : <?php echo formatNumber($rvRow['qty'], 3); ?>
+                                    </span>
+                                    <?php endforeach; ?>
+                                </td>
+                            </tr>
+                            <?php endif; ?>
+                            <?php endforeach; ?>
+                        </tbody>
+                    </table>
+                </div>
+                <?php endif; ?>
+                <?php endif; ?>
+
                 <!-- Status actions (migration 0049) -->
                 <?php if ($status === 'draft' && ($canSendBom || $canEditBom)): ?>
                 <div class="mt-4 no-print">
@@ -353,8 +433,6 @@ $statusBadge = function ($s) {
                     &middot; <?php echo formatDate($bom['created_at']); ?>
                     <?php if ($approvedByName): ?>
                     &nbsp;|&nbsp; <?php _e('approved_by'); ?>: <?php echo htmlspecialchars($approvedByName); ?> &middot; <?php echo formatDateTime($bom['approved_at']); ?>
-                    <?php elseif ($status === 'approved' && empty($bom['approved_at'])): ?>
-                    &nbsp;|&nbsp; <?php _e('approved_by'); ?>: <?php _e('auto_approved'); ?>
                     <?php endif; ?>
                     <?php if ($status === 'rejected' && $rejectedByName): ?>
                     &nbsp;|&nbsp; <?php _e('bom_rejected_by'); ?>: <?php echo htmlspecialchars($rejectedByName); ?> &middot; <?php echo formatDateTime($bom['rejected_at']); ?>
