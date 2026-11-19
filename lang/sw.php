@@ -1923,4 +1923,18 @@ return [
     'budget_purchase_rule_po' => 'Kiasi kilicho kwenye agizo la ununuzi ambacho bado hakijanunuliwa kinabaki Wazi. Ukurasa wa bajeti unaweza kuonyesha "Imenunuliwa yote", ikimaanisha hakuna kilichobaki cha kuandaa.',
     'budget_purchase_rule_not_approved' => 'Bajeti za rasimu, zinazosubiri na zilizokataliwa zinaonyesha kistari, kwa sababu ununuzi unaweza kuandaliwa tu kutoka kwa bajeti iliyoidhinishwa.',
     'budget_purchase_rule_no_manual_close' => 'Bajeti haiwezi kufungwa kwa mkono. Mstari ukinunuliwa pungufu, au kilichobaki hakitanunuliwa kamwe, bajeti inabaki Wazi.',
+
+    // Supplier blacklist (migration 0054)
+    'supplier_blacklist' => 'Orodha Nyeusi',
+    'supplier_blacklisted' => 'Yuko Orodha Nyeusi',
+    'supplier_blacklisted_label' => 'Weka msambazaji huyu kwenye orodha nyeusi',
+    'supplier_blacklist_hint' => 'Msambazaji aliye kwenye orodha nyeusi hawezi kuchaguliwa kwenye bajeti. Manunuzi, malipo na bajeti zilizokwisha idhinishwa haziathiriwi.',
+    'supplier_blacklist_reason' => 'Sababu ya kuweka kwenye orodha nyeusi',
+    'supplier_blacklist_reason_required' => 'Tafadhali toa sababu ya kumweka msambazaji huyu kwenye orodha nyeusi.',
+    'supplier_blacklisted_since' => 'Yuko orodha nyeusi tangu',
+    'budget_supplier_blacklisted' => 'Msambazaji "%s" yuko kwenye orodha nyeusi (%s). Chagua msambazaji mwingine.',
+    'budget_has_blacklisted_title' => 'Bajeti hii inatumia msambazaji aliye kwenye orodha nyeusi:',
+    'budget_replace_blacklisted_hint' => 'Mbadilishe kwa msambazaji mwingine kabla bajeti haijahifadhiwa, kutumwa kwa idhini au kuidhinishwa.',
+    'budget_blacklisted_approved_hint' => 'Bajeti iliidhinishwa kabla msambazaji hajawekwa kwenye orodha nyeusi. Manunuzi na maagizo ya ununuzi bado yanaweza kuandaliwa, baada ya onyo.',
+    'budget_blacklisted_procure_confirm' => 'Msambazaji "%s" yuko kwenye orodha nyeusi. Bajeti hii iliidhinishwa kabla ya hapo. Uendelee hata hivyo?',
 ];

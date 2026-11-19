@@ -2635,6 +2635,83 @@ function budgetCanSendForApproval($budget) {
 }
 
 /**
+ * Whether suppliers.is_blacklisted exists (migration 0054). The server pulls the
+ * code a moment before it runs the migration, so every reader checks this first
+ * and simply sees no blacklisted supplier until the column is there.
+ */
+function supplierBlacklistAvailable($conn) {
+    static $avail = null;
+    if ($avail !== null) return $avail;
+    try {
+        $st = $conn->query("
+            SELECT COUNT(*) FROM INFORMATION_SCHEMA.COLUMNS
+            WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'suppliers' AND COLUMN_NAME = 'is_blacklisted'
+        ");
+        $avail = ((int)$st->fetchColumn()) > 0;
+    } catch (Throwable $e) {
+        $avail = false;
+    }
+    return $avail;
+}
+
+/**
+ * Blacklisted suppliers, keyed by supplier id:
+ * [id => ['name' => ..., 'reason' => ..., 'blacklisted_at' => ...]].
+ * With $ids, only those suppliers are looked at (an empty array returns []).
+ */
+function getBlacklistedSuppliers($conn, $ids = null) {
+    if (!supplierBlacklistAvailable($conn)) return [];
+    $sql = "
+        SELECT s.id, la.name, s.blacklist_reason, s.blacklisted_at
+        FROM suppliers s
+        LEFT JOIN ledger_accounts la ON s.ledger_account_id = la.id
+        WHERE s.is_blacklisted = 1
+    ";
+    $params = [];
+    if ($ids !== null) {
+        $ids = array_values(array_unique(array_filter(array_map('intval', (array)$ids))));
+        if (empty($ids)) return [];
+        $sql .= ' AND s.id IN (' . implode(',', array_fill(0, count($ids), '?')) . ')';
+        $params = $ids;
+    }
+    $st = $conn->prepare($sql);
+    $st->execute($params);
+    $out = [];
+    foreach ($st->fetchAll(PDO::FETCH_ASSOC) as $r) {
+        $out[(int)$r['id']] = [
+            'name' => $r['name'],
+            'reason' => $r['blacklist_reason'],
+            'blacklisted_at' => $r['blacklisted_at'],
+        ];
+    }
+    return $out;
+}
+
+/**
+ * Blacklisted suppliers that appear on a budget's allocation lines.
+ */
+function getBudgetBlacklistedSuppliers($budgetId, $conn) {
+    if (!supplierBlacklistAvailable($conn)) return [];
+    $st = $conn->prepare("SELECT DISTINCT supplier_id FROM budget_details WHERE budget_id = ?");
+    $st->execute([(int)$budgetId]);
+    return getBlacklistedSuppliers($conn, $st->fetchAll(PDO::FETCH_COLUMN));
+}
+
+/**
+ * One error message per blacklisted supplier among $supplierIds, or [] when
+ * none is. Used by the budget form save, send for approval and approve, so all
+ * three refuse with the same words.
+ */
+function budgetBlacklistErrors($supplierIds, $conn) {
+    $errors = [];
+    foreach (getBlacklistedSuppliers($conn, $supplierIds) as $b) {
+        $reason = trim((string)($b['reason'] ?? ''));
+        $errors[] = sprintf(__('budget_supplier_blacklisted'), $b['name'] ?? '-', $reason !== '' ? $reason : '-');
+    }
+    return $errors;
+}
+
+/**
  * Outstanding (ordered but not yet purchased) quantities sitting on OPEN
  * purchase orders raised from a budget. Open = draft / pending_approval /
  * approved; closed POs are fully received (their purchases carry budget_id and

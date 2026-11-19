@@ -57,6 +57,9 @@ $detStmt = $conn->prepare("
 $detStmt->execute([$id]);
 $details = $detStmt->fetchAll(PDO::FETCH_ASSOC);
 
+// Blacklisted suppliers on this budget (migration 0054), keyed by supplier id.
+$budgetBlacklisted = getBlacklistedSuppliers($conn, array_column($details, 'supplier_id'));
+
 // Goods and VAT are tracked apart: the Amount column is goods only (qty x rate),
 // VAT (migration 0044) is its own column, and the footer shows Goods / VAT / Total.
 // On a budget written before 0044 every vat_amount is 0.00, so $grandTotal is
@@ -330,6 +333,20 @@ $statusBadge = function ($s) {
                 </div>
                 <?php endif; ?>
 
+                <?php if (!empty($budgetBlacklisted) && $status !== 'rejected'): ?>
+                <div class="alert alert-<?php echo $status === 'approved' ? 'warning' : 'danger'; ?> no-print">
+                    <i class="bi bi-slash-circle"></i> <strong><?php _e('budget_has_blacklisted_title'); ?></strong>
+                    <ul class="mb-0 mt-1">
+                        <?php foreach ($budgetBlacklisted as $bl): ?>
+                        <li><?php echo htmlspecialchars($bl['name'] ?? '-'); ?>: <?php echo htmlspecialchars((string)($bl['reason'] ?? '')); ?></li>
+                        <?php endforeach; ?>
+                    </ul>
+                    <div class="small mt-1"><?php
+                        echo $status === 'approved' ? __('budget_blacklisted_approved_hint') : __('budget_replace_blacklisted_hint');
+                    ?></div>
+                </div>
+                <?php endif; ?>
+
                 <h6 class="text-muted mb-3"><?php _e('budget_allocations'); ?></h6>
                 <div class="table-responsive">
                     <table class="table table-bordered table-sm align-middle">
@@ -376,7 +393,7 @@ $statusBadge = function ($s) {
                                     <?php endif; ?>
                                 </td>
                                 <td><?php echo htmlspecialchars($d['unit']); ?></td>
-                                <td><?php echo htmlspecialchars($d['supplier_name'] ?? '-'); ?></td>
+                                <td><?php echo htmlspecialchars($d['supplier_name'] ?? '-'); ?><?php if (isset($budgetBlacklisted[(int)$d['supplier_id']])): ?> <span class="badge bg-danger no-print"><i class="bi bi-slash-circle"></i> <?php _e('supplier_blacklisted'); ?></span><?php endif; ?></td>
                                 <td><span class="badge bg-<?php echo $d['procurement_type'] === 'import' ? 'info' : 'secondary'; ?>"><?php _e($d['procurement_type']); ?></span></td>
                                 <td class="text-end"><?php echo formatNumber($d['quantity'], 3); ?></td>
                                 <td class="text-end"><?php echo formatNumber($d['rate'], 2); ?></td>
@@ -458,6 +475,12 @@ $statusBadge = function ($s) {
                             $isImport = $g['type'] === 'import';
                             $canCreate = $isImport ? $canCreateImport : $canCreatePurchase;
                             $done = $g['remaining_total'] <= 0.0005;
+                            // Approved before the supplier was blacklisted (0054):
+                            // procurement is still allowed, after a warning.
+                            $gBlack = $budgetBlacklisted[(int)$g['supplier_id']] ?? null;
+                            $gConfirm = $gBlack
+                                ? ' onclick="return confirm(' . htmlspecialchars(json_encode(sprintf(__('budget_blacklisted_procure_confirm'), $g['supplier_name'] ?? '-')), ENT_QUOTES) . ')"'
+                                : '';
                         ?>
                         <div class="col-md-6">
                             <div class="card h-100">
@@ -466,18 +489,19 @@ $statusBadge = function ($s) {
                                         <div>
                                             <strong><?php echo htmlspecialchars($g['supplier_name'] ?? '-'); ?></strong>
                                             <span class="badge bg-<?php echo $isImport ? 'info' : 'secondary'; ?> ms-1"><?php _e($g['type']); ?></span>
+                                            <?php if ($gBlack): ?><span class="badge bg-danger ms-1" title="<?php echo htmlspecialchars((string)($gBlack['reason'] ?? '')); ?>"><i class="bi bi-slash-circle"></i> <?php _e('supplier_blacklisted'); ?></span><?php endif; ?>
                                         </div>
                                         <?php if (!$done): ?>
                                         <div class="d-flex gap-1">
                                             <?php if (!$isImport && $canCreatePo): ?>
                                             <a class="btn btn-sm btn-outline-primary"
-                                               href="purchase_order.php?from_budget=<?php echo $id; ?>&supplier=<?php echo $g['supplier_id']; ?>">
+                                               href="purchase_order.php?from_budget=<?php echo $id; ?>&supplier=<?php echo $g['supplier_id']; ?>"<?php echo $gConfirm; ?>>
                                                 <i class="bi bi-file-earmark-text"></i> <?php _e('create_po'); ?>
                                             </a>
                                             <?php endif; ?>
                                             <?php if ($canCreate): ?>
                                             <a class="btn btn-sm btn-primary"
-                                               href="<?php echo $isImport ? 'purchase_import_form.php' : 'purchases.php'; ?>?from_budget=<?php echo $id; ?>&supplier=<?php echo $g['supplier_id']; ?>">
+                                               href="<?php echo $isImport ? 'purchase_import_form.php' : 'purchases.php'; ?>?from_budget=<?php echo $id; ?>&supplier=<?php echo $g['supplier_id']; ?>"<?php echo $gConfirm; ?>>
                                                 <i class="bi bi-plus"></i> <?php echo $isImport ? __('create_purchase_import') : __('create_purchase'); ?>
                                             </a>
                                             <?php endif; ?>

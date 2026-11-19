@@ -39,6 +39,10 @@ if (!hasPermission('suppliers', 'view') && !hasPermission('purchases', 'create')
 }
 
 try {
+    // Blacklist columns (migration 0054), only once the migration has run.
+    $blacklistCols = supplierBlacklistAvailable($conn)
+        ? 's.is_blacklisted, s.blacklist_reason, s.blacklisted_at,'
+        : '0 AS is_blacklisted, NULL AS blacklist_reason, NULL AS blacklisted_at,';
     $stmt = $conn->prepare("
         SELECT 
             s.id,
@@ -55,6 +59,7 @@ try {
             -- Payable convention (unchanged): positive = we owe the supplier.
             (la.opening_balance + COALESCE(gl.delta, 0)) as current_balance,
             s.is_active,
+            $blacklistCols
             (SELECT COUNT(*) FROM purchases WHERE supplier_id = s.id) as purchase_count,
             (SELECT COUNT(*) FROM payments WHERE to_account_id = la.id) as payment_count
         FROM suppliers s

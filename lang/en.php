@@ -1923,4 +1923,18 @@ return [
     'budget_purchase_rule_po' => 'Quantity on a purchase order that has not been purchased yet stays Open. The budget page may still show "Fully procured", which means nothing is left to raise.',
     'budget_purchase_rule_not_approved' => 'Draft, pending and rejected budgets show a dash, because purchases can only be raised from an approved budget.',
     'budget_purchase_rule_no_manual_close' => 'A budget cannot be closed by hand. If a line is bought short, or the rest will never be bought, the budget stays Open.',
+
+    // Supplier blacklist (migration 0054)
+    'supplier_blacklist' => 'Blacklist',
+    'supplier_blacklisted' => 'Blacklisted',
+    'supplier_blacklisted_label' => 'Blacklist this supplier',
+    'supplier_blacklist_hint' => 'A blacklisted supplier cannot be chosen on a budget. Purchases, payments and budgets already approved are not affected.',
+    'supplier_blacklist_reason' => 'Reason for blacklisting',
+    'supplier_blacklist_reason_required' => 'Please give a reason for blacklisting this supplier.',
+    'supplier_blacklisted_since' => 'Blacklisted since',
+    'budget_supplier_blacklisted' => 'Supplier "%s" is blacklisted (%s). Choose another supplier.',
+    'budget_has_blacklisted_title' => 'This budget uses a blacklisted supplier:',
+    'budget_replace_blacklisted_hint' => 'Replace it with another supplier before the budget can be saved, sent for approval or approved.',
+    'budget_blacklisted_approved_hint' => 'The budget was approved before the supplier was blacklisted. Purchases and POs can still be raised, after a warning.',
+    'budget_blacklisted_procure_confirm' => 'Supplier "%s" is blacklisted. This budget was approved before the blacklisting. Continue anyway?',
 ];

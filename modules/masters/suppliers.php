@@ -13,6 +13,8 @@ if (!hasPermission('suppliers', 'view')) {
     redirect('');
 }
 
+$blacklistAvailable = supplierBlacklistAvailable($conn);
+
 require_once '../../includes/header.php';
 ?>
 
@@ -176,7 +178,26 @@ require_once '../../includes/header.php';
                             </div>
                         </div>
                     </div>
-                    
+
+                    <?php if ($blacklistAvailable): ?>
+                    <!-- Blacklist (migration 0054). Edit mode only: setting it needs
+                         suppliers.edit, and the create action does not take it. -->
+                    <div id="blacklistSection" style="display:none;">
+                        <h6 class="border-bottom pb-2 mb-3 mt-4 text-danger"><i class="bi bi-slash-circle"></i> <?php _e('supplier_blacklist'); ?></h6>
+                        <div class="form-check mb-2">
+                            <input type="checkbox" class="form-check-input" id="supplierBlacklisted"
+                                   onchange="toggleBlacklistReason()">
+                            <label class="form-check-label" for="supplierBlacklisted"><?php _e('supplier_blacklisted_label'); ?></label>
+                        </div>
+                        <small class="text-muted d-block mb-2"><?php _e('supplier_blacklist_hint'); ?></small>
+                        <div id="blacklistReasonWrap" style="display:none;">
+                            <label for="supplierBlacklistReason" class="form-label"><?php _e('supplier_blacklist_reason'); ?> <span class="text-danger">*</span></label>
+                            <textarea class="form-control" id="supplierBlacklistReason" rows="2" maxlength="1000"></textarea>
+                            <small class="text-muted" id="blacklistSince"></small>
+                        </div>
+                    </div>
+                    <?php endif; ?>
+
                     <!-- Warning for opening balance edit -->
                     <div class="alert alert-warning" id="balanceWarning" style="display:none;">
                         <i class="bi bi-exclamation-triangle"></i>
@@ -292,8 +313,12 @@ const LANG = {
     and: <?php echo json_encode(__('and')); ?>,
     purchase: <?php echo json_encode(__('purchase')); ?>,
     payment: <?php echo json_encode(__('payment')); ?>,
-    opening: <?php echo json_encode(__('opening_balance')); ?>
+    opening: <?php echo json_encode(__('opening_balance')); ?>,
+    blacklisted: <?php echo json_encode(__('supplier_blacklisted')); ?>,
+    blacklist_reason_required: <?php echo json_encode(__('supplier_blacklist_reason_required')); ?>,
+    blacklisted_since: <?php echo json_encode(__('supplier_blacklisted_since')); ?>
 };
+const BLACKLIST_AVAILABLE = <?php echo $blacklistAvailable ? 'true' : 'false'; ?>;
 
 const CURRENCY_SYMBOL = <?php echo json_encode($defaultCurrencySymbol); ?>;
 
@@ -456,6 +481,8 @@ function displaySuppliers() {
                 ${supplier.is_active ? 
                     `<span class="badge bg-success">${LANG.active}</span>` : 
                     `<span class="badge bg-secondary">${LANG.inactive}</span>`}
+                ${supplier.is_blacklisted == 1 ?
+                    `<span class="badge bg-danger" title="${escapeHtml(supplier.blacklist_reason || '')}"><i class="bi bi-slash-circle"></i> ${LANG.blacklisted}</span>` : ''}
             </td>
             <td>
                 <div class="btn-group btn-group-sm">
@@ -476,6 +503,11 @@ function displaySuppliers() {
     `).join('');
 }
 
+function toggleBlacklistReason() {
+    const on = document.getElementById('supplierBlacklisted').checked;
+    document.getElementById('blacklistReasonWrap').style.display = on ? 'block' : 'none';
+}
+
 // Show create modal
 function showCreateModal() {
     document.getElementById('supplierModalTitle').textContent = LANG.add_new_supplier;
@@ -485,6 +517,13 @@ function showCreateModal() {
     document.getElementById('supplierActive').checked = true;
     document.getElementById('supplierOpeningBalance').value = '0';
     document.getElementById('balanceWarning').style.display = 'none';
+    if (BLACKLIST_AVAILABLE) {
+        // Blacklisting is an edit-only action (suppliers.edit).
+        document.getElementById('blacklistSection').style.display = 'none';
+        document.getElementById('supplierBlacklisted').checked = false;
+        document.getElementById('supplierBlacklistReason').value = '';
+        toggleBlacklistReason();
+    }
     supplierModal.show();
 }
 
@@ -507,6 +546,14 @@ function showEditModal(idParam) {
     document.getElementById('supplierOpeningBalance').value = supplier.opening_balance || 0;
     document.getElementById('supplierActive').checked = supplier.is_active == 1;
     document.getElementById('balanceWarning').style.display = 'none';
+    if (BLACKLIST_AVAILABLE) {
+        document.getElementById('blacklistSection').style.display = 'block';
+        document.getElementById('supplierBlacklisted').checked = supplier.is_blacklisted == 1;
+        document.getElementById('supplierBlacklistReason').value = supplier.blacklist_reason || '';
+        document.getElementById('blacklistSince').textContent = (supplier.is_blacklisted == 1 && supplier.blacklisted_at)
+            ? LANG.blacklisted_since + ' ' + formatDate(supplier.blacklisted_at) : '';
+        toggleBlacklistReason();
+    }
     
     supplierModal.show();
 }
@@ -537,6 +584,16 @@ async function saveSupplier() {
     
     if (id) {
         data.id = id;
+        // Sent on edit only; the server ignores it when the key is absent.
+        if (BLACKLIST_AVAILABLE) {
+            data.is_blacklisted = document.getElementById('supplierBlacklisted').checked ? 1 : 0;
+            data.blacklist_reason = document.getElementById('supplierBlacklistReason').value.trim();
+            if (data.is_blacklisted && !data.blacklist_reason) {
+                showToast(LANG.blacklist_reason_required, 'warning');
+                document.getElementById('supplierBlacklistReason').focus();
+                return;
+            }
+        }
     }
     
     try {

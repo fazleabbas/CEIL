@@ -178,9 +178,32 @@ try {
             if ($dupStmt->fetch()) {
                 throw new Exception('A supplier/customer/account with this name already exists');
             }
-            
+
+            // Blacklist (migration 0054). Only touched when the key is posted, so
+            // a page cached before this feature cannot clear a blacklisting.
+            $blacklistChange = null; // 'blacklist' | 'unblacklist' | 'reason' | null
+            $newBlacklisted = null;
+            $newBlacklistReason = null;
+            if (supplierBlacklistAvailable($conn) && array_key_exists('is_blacklisted', $input['data'])) {
+                $newBlacklisted = !empty($input['data']['is_blacklisted']) ? 1 : 0;
+                $wasBlacklisted = (int)($oldSupplier['is_blacklisted'] ?? 0);
+                if ($newBlacklisted) {
+                    $newBlacklistReason = mb_substr(cleanText($input['data']['blacklist_reason'] ?? ''), 0, 1000);
+                    if (trim($newBlacklistReason) === '') {
+                        throw new Exception(__('supplier_blacklist_reason_required'));
+                    }
+                    if (!$wasBlacklisted) {
+                        $blacklistChange = 'blacklist';
+                    } elseif ($newBlacklistReason !== (string)$oldSupplier['blacklist_reason']) {
+                        $blacklistChange = 'reason';
+                    }
+                } elseif ($wasBlacklisted) {
+                    $blacklistChange = 'unblacklist';
+                }
+            }
+
             $conn->beginTransaction();
-            
+
             // Update ledger account name and opening balance.
             // Self-heal account_type='supplier' so a drifted ledger gets
             // fixed by simply re-saving the supplier (mirrors customer flow).
@@ -202,11 +225,39 @@ try {
                 $contactPerson, $phone, $email, $address,
                 $gstin, $pan, $isActive, $id
             ]);
-            
+
+            if ($blacklistChange === 'blacklist') {
+                $conn->prepare("
+                    UPDATE suppliers
+                    SET is_blacklisted = 1, blacklist_reason = ?, blacklisted_at = NOW(), blacklisted_by = ?
+                    WHERE id = ?
+                ")->execute([$newBlacklistReason, getUserId(), $id]);
+            } elseif ($blacklistChange === 'reason') {
+                $conn->prepare("UPDATE suppliers SET blacklist_reason = ? WHERE id = ?")
+                     ->execute([$newBlacklistReason, $id]);
+            } elseif ($blacklistChange === 'unblacklist') {
+                $conn->prepare("
+                    UPDATE suppliers
+                    SET is_blacklisted = 0, blacklist_reason = NULL, blacklisted_at = NULL, blacklisted_by = NULL
+                    WHERE id = ?
+                ")->execute([$id]);
+            }
+
             $conn->commit();
-            
+
             logAudit('suppliers', 'update', $id);
-            
+            // Its own audit action, so a blacklisting (and the reason given at the
+            // time) stays on record after it is lifted and the columns are cleared.
+            if ($blacklistChange !== null) {
+                logAudit(
+                    'suppliers',
+                    $blacklistChange === 'unblacklist' ? 'unblacklist' : 'blacklist',
+                    $id,
+                    ['is_blacklisted' => (int)($oldSupplier['is_blacklisted'] ?? 0), 'blacklist_reason' => $oldSupplier['blacklist_reason'] ?? null],
+                    ['is_blacklisted' => $newBlacklisted, 'blacklist_reason' => $newBlacklistReason]
+                );
+            }
+
             // Get the updated supplier with CALCULATED balance
             $getStmt = $conn->prepare("
                 SELECT 

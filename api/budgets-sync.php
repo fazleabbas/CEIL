@@ -69,6 +69,10 @@ function budgetSendForApproval($conn, $data) {
     $cnt->execute([$id]);
     if ((int)$cnt->fetchColumn() === 0) throw new Exception(__('budget_needs_one_allocation'));
 
+    // A blacklisted supplier (0054) must be replaced before the budget goes out.
+    $blErrors = budgetBlacklistErrors(array_keys(getBudgetBlacklistedSuppliers($id, $conn)), $conn);
+    if (!empty($blErrors)) throw new Exception(implode(' ', $blErrors));
+
     $stmt = $conn->prepare("UPDATE budgets SET status = 'pending_approval', sent_for_approval_by = ?, sent_for_approval_at = NOW() WHERE id = ?");
     $stmt->execute([getUserId(), $id]);
     logAudit('budget', 'send_for_approval', $id);
@@ -132,6 +136,11 @@ function budgetApprove($conn, $data) {
         $approvedByProduct[(int)$r['product_id']] = (float)$r['approved'];
     }
     $budgetedOther = getRequisitionBudgetedQty($requisitionId, $conn, $id);
+
+    // A supplier blacklisted after this budget was sent (0054) cannot be
+    // approved. The approver rejects it so the creator can replace the supplier.
+    $blErrors = budgetBlacklistErrors(array_keys(getBudgetBlacklistedSuppliers($id, $conn)), $conn);
+    if (!empty($blErrors)) throw new Exception(implode(' ', $blErrors));
 
     $conn->beginTransaction();
 

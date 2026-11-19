@@ -1,3 +1,42 @@
+# FEATURE: Blacklist suppliers so budgets cannot use them [x]
+**Status: COMPLETED** - verified with a temporary Admin session file (removed)
+on a test copy of the app against the 7.4 MySQL on port 3307. suppliers,
+budgets, budget_details, ledger_accounts diff IDENTICAL after cleanup.
+**Needs migration 0054.**
+
+**Files (NEW, 1):** `sql/migrations/0054_add_supplier_blacklist.sql`
+**Files (MODIFIED, 9):** `includes/functions.php`, `api/suppliers.php`,
+`api/suppliers-sync.php`, `api/budgets-sync.php`, `modules/masters/suppliers.php`,
+`modules/transactions/budget.php`, `budget_view.php`, `lang/en.php`, `lang/sw.php`
+
+## Decisions (user-confirmed)
+- BUDGETS ONLY. Purchases, POs, imports and payments still list a blacklisted
+  supplier. Separate from `is_active` on purpose: inactive hides the supplier
+  from payments, so what is owed could not be paid.
+- Who: `suppliers.edit` (edit modal only, create does not take it). A reason
+  is required. Own audit actions `blacklist` / `unblacklist` with old/new values,
+  because unblacklisting clears the columns.
+- Budget form: blacklisted suppliers not offered. One already on THIS budget
+  stays in its own row, marked "(Blacklisted)", so the row is not silently
+  dropped; the save then refuses it by name. Save, send_for_approval and
+  approve all refuse (`budgetBlacklistErrors()`).
+- Approved budgets are left alone: Create Purchase / Create PO / Import still
+  work after a JS confirm(). Warning alert + badges on `budget_view.php`
+  (`no-print`).
+
+## Worth knowing
+- `supplierBlacklistAvailable()` guards every reader, because the server pulls
+  the code a moment before the cron runs the migration.
+- `suppliers-sync.php` touches the blacklist only when `is_blacklisted` is
+  POSTED, so a page cached before this feature cannot clear one.
+- Testing: the 8.2 MySQL held port 3306 again. Instead of stopping it, the 7.4
+  mysqld ran on 3307 and a scratch copy of the app had
+  `DB_HOST = '127.0.0.1;port=3307'`. mysqldump `--compact` drops the
+  time-zone line, so restored TIMESTAMPs came back 3 hours early; fixed by hand.
+
+---
+---
+
 # FEATURE: Auto-apply migrations on cei.fis.co.tz [x]
 **Files (NEW, 1):** `cli/run-cei-migrations.php` (CLI only, 404 from a browser).
 Run by the server cron (`~/cei_autopull.sh`) after each `git pull`.

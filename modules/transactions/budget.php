@@ -146,6 +146,20 @@ $supStmt = $conn->query("
 ");
 $suppliers = $supStmt->fetchAll(PDO::FETCH_ASSOC);
 
+// Blacklisted suppliers (migration 0054) are not offered. One already on THIS
+// budget stays in its dropdown, marked, so the row does not silently fall back
+// to "Select supplier" and get dropped. The save then refuses it by name.
+$blacklisted = getBlacklistedSuppliers($conn);
+$onThisBudget = [];
+foreach ($existingAllocations as $rows) {
+    foreach ($rows as $a) $onThisBudget[(int)$a['supplier_id']] = true;
+}
+$budgetBlacklisted = array_intersect_key($blacklisted, $onThisBudget);
+$suppliers = array_values(array_filter($suppliers, function ($s) use ($blacklisted, $onThisBudget) {
+    $sid = (int)$s['id'];
+    return !isset($blacklisted[$sid]) || isset($onThisBudget[$sid]);
+}));
+
 // Validation / save errors, rendered inline in the card body below. They are
 // ALSO passed to setAlert() at the end of the POST block, but that goes nowhere
 // on this form — getAlert() has no callers anywhere in the app — so without the
@@ -275,6 +289,12 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 
     if (empty($allocs)) {
         $errors[] = __('budget_needs_one_allocation');
+    }
+
+    // Blacklisted suppliers (0054). Checked here, not only in the dropdown, so a
+    // hand-made POST is refused too.
+    foreach (budgetBlacklistErrors(array_column($allocs, 'supplier_id'), $conn) as $be) {
+        $errors[] = $be;
     }
 
     if (empty($errors)) {
@@ -430,6 +450,18 @@ foreach ($rvLines as $ln) {
                         <li><?php echo htmlspecialchars($error); ?></li>
                         <?php endforeach; ?>
                     </ul>
+                </div>
+                <?php endif; ?>
+
+                <?php if (!empty($budgetBlacklisted) && empty($errors)): ?>
+                <div class="alert alert-warning">
+                    <i class="bi bi-slash-circle"></i> <strong><?php _e('budget_has_blacklisted_title'); ?></strong>
+                    <ul class="mb-0 mt-1">
+                        <?php foreach ($budgetBlacklisted as $bl): ?>
+                        <li><?php echo htmlspecialchars($bl['name'] ?? '-'); ?>: <?php echo htmlspecialchars((string)($bl['reason'] ?? '')); ?></li>
+                        <?php endforeach; ?>
+                    </ul>
+                    <div class="small mt-1"><?php _e('budget_replace_blacklisted_hint'); ?></div>
                 </div>
                 <?php endif; ?>
 
@@ -607,8 +639,8 @@ foreach ($rvLines as $ln) {
 <?php require_once '../../includes/footer.php'; ?>
 
 <script>
-const SUPPLIER_OPTIONS = <?php echo json_encode(array_map(function ($s) {
-    return ['id' => (int)$s['id'], 'name' => $s['name']];
+const SUPPLIER_OPTIONS = <?php echo json_encode(array_map(function ($s) use ($blacklisted) {
+    return ['id' => (int)$s['id'], 'name' => $s['name'], 'blacklisted' => isset($blacklisted[(int)$s['id']])];
 }, $suppliers), JSON_UNESCAPED_UNICODE); ?>;
 
 const EXISTING_ALLOCS = <?php
@@ -635,6 +667,7 @@ const T = {
     purchase: '<?php echo addslashes(__('purchase')); ?>',
     import: '<?php echo addslashes(__('import')); ?>',
     select_supplier: '<?php echo addslashes(__('select_supplier')); ?>',
+    blacklisted: <?php echo json_encode(__('supplier_blacklisted')); ?>,
     confirm_drop_alloc_rows: '<?php echo addslashes(__('budget_confirm_drop_alloc_rows')); ?>',
     over_by: '<?php echo addslashes(__('budget_over_by')); ?>'
 };
@@ -651,8 +684,12 @@ function fmt2(n) {
 function supplierOptionsHtml(selected) {
     let html = '<option value="">' + T.select_supplier + '</option>';
     SUPPLIER_OPTIONS.forEach(s => {
-        html += '<option value="' + s.id + '"' + (s.id === selected ? ' selected' : '') + '>' +
-            $('<div>').text(s.name).html() + '</option>';
+        // A blacklisted supplier is only listed when it is already on this
+        // budget, and only in the row that holds it, so it cannot be picked anew.
+        if (s.blacklisted && s.id !== selected) return;
+        html += '<option value="' + s.id + '"' + (s.id === selected ? ' selected' : '') +
+            (s.blacklisted ? ' class="text-danger"' : '') + '>' +
+            $('<div>').text(s.name).html() + (s.blacklisted ? ' (' + $('<div>').text(T.blacklisted).html() + ')' : '') + '</option>';
     });
     return html;
 }
