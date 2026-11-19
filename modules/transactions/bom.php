@@ -731,7 +731,7 @@ function itemTemplate(idx) {
                 </div>
                 <div class="col-md-2">
                     <label class="form-label small mb-1" title="${T.rate_hint}">${T.rate} <i class="bi bi-info-circle text-muted"></i></label>
-                    <input type="number" name="rate[${idx}]" step="0.01" min="0"
+                    <input type="number" name="rate[${idx}]" step="any" min="0"
                            class="form-control form-control-sm rate-input" title="${T.rate_hint}">
                 </div>
                 <div class="col-md-2">
