@@ -1052,6 +1052,13 @@ document.getElementById('bomSaveBtn').addEventListener('click', function (e) {
 });
 
 document.getElementById('bomForm').addEventListener('submit', function (e) {
+    // main.js disables the Save button on EVERY submit, even one cancelled
+    // below, and nothing turned it back on, so after one cancelled save Save
+    // stayed dead. Runs after all submit handlers: re-enable only if cancelled.
+    setTimeout(function () {
+        if (e.defaultPrevented) document.getElementById('bomSaveBtn').disabled = false;
+    }, 0);
+
     const blocks = document.querySelectorAll('.bom-item');
     let firstError = null;
 

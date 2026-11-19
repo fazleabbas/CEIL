@@ -685,6 +685,13 @@ document.getElementById('boqSaveBtn').addEventListener('click', function (e) {
 });
 
 document.getElementById('boqForm').addEventListener('submit', function (e) {
+    // main.js disables the Save button on EVERY submit, even one cancelled
+    // below, and nothing turned it back on, so after one cancelled save Save
+    // stayed dead. Runs after all submit handlers: re-enable only if cancelled.
+    setTimeout(function () {
+        if (e.defaultPrevented) document.getElementById('boqSaveBtn').disabled = false;
+    }, 0);
+
     const blocks = document.querySelectorAll('.boq-item');
     let firstError = null;
 
