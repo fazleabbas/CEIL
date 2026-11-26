@@ -1,3 +1,47 @@
+# FEATURE: Merge duplicate products [x]
+**Status: COMPLETED** - no schema change, no migration. Verified on a full
+copy of the local DB (`cei_mt`, dropped afterwards); `cei` itself untouched.
+
+**Files (NEW, 2):** `includes/product_merge.php` (all logic),
+`modules/masters/products_merge.php` (page)
+**Files (MODIFIED, 3):** `modules/masters/products.php` (Admin-only button),
+`lang/en.php`, `lang/sw.php` (`pm_*` keys)
+
+## Decisions (user-confirmed)
+- Admin only. Pick KEEP + REMOVE, preview, then confirm (checkbox + JS
+  confirm). The kept product's final name and category are set on the form.
+- Everything moves to KEEP; REMOVE is deactivated, never deleted. Audit
+  `merge` on keep (summary) + `merged_into` on remove.
+- Refused: same product, keep inactive, different units (case-insensitive).
+
+## How it works (do not simplify)
+- Tables are found at run time: FKs to `products` + every `product_id`
+  column. A new table is picked up without touching this code.
+- `opening_stocks` and `product_pricing` are UNIQUE per product+location.
+  Opening stock at a shared location is FOLDED (qty added, rate weighted by
+  base value, earliest date) AND the two 'opening' batches likewise, because
+  `opening_stocks.php` assumes ONE opening batch per product per location.
+  `consumption_voucher_batches` links are moved to the kept batch first:
+  they CASCADE-delete with a batch. Price clash: kept product's price stays.
+- `boms` / `boqs.approved_snapshot` JSON keys are combined (qty added).
+- `updated_at = updated_at` on every moved row: documents do not look edited.
+- Both product rows locked FOR UPDATE in id order; one transaction.
+
+## Data at build time (local copy, Sep)
+23 groups of active products whose names differ only in punctuation/case;
+6 of them have opening stock at the same location for both.
+
+## Verification
+Cable pair 3472 <- 3382: stock qty/value/per-location identical, batch
+timestamps unchanged, snapshot {3382:100, 3472:5} -> {3472:105}, 0 rows left on
+3382. Opening clash 524 <- 750: 6 @ 32,198 + 9 @ 42,930 -> one row and one
+batch of 15 @ 38,637.20, value 579,558 unchanged, planted CV batch link moved.
+Refusals (unit, same, inactive keep, no confirm, blank name, bad category,
+non-Admin 302, bad CSRF): audit count, active count, batch checksum unchanged.
+
+---
+---
+
 # FEATURE: Edit a pending or approved Purchase Order [x]
 **Status: COMPLETED** - no schema change, no migration. Verified with one
 temporary user on a scratch copy against the 7.4 MySQL on port 3307;

@@ -33,6 +33,11 @@ require_once '../../includes/header.php';
         <button class="btn btn-outline-primary" onclick="manualSync()">
             <i class="bi bi-arrow-repeat"></i> <?php _e('sync_now'); ?>
         </button>
+        <?php if (getUserData('role_name') === 'Admin'): ?>
+        <a href="<?php echo BASE_URL; ?>modules/masters/products_merge.php" class="btn btn-outline-danger">
+            <i class="bi bi-intersect"></i> <?php _e('pm_title'); ?>
+        </a>
+        <?php endif; ?>
         <?php if (hasPermission('products', 'import')): ?>
         <a href="<?php echo BASE_URL; ?>modules/masters/products-import.php" class="btn btn-outline-success">
             <i class="bi bi-upload"></i> <?php _e('import_products'); ?>
