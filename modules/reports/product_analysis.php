@@ -1066,7 +1066,7 @@ if ($productFilter && $locationFilter) {
                         </td>
                         <td>
                             <?php if ($trans['trans_type'] == 'purchase'): ?>
-                            <a href="<?php echo BASE_URL; ?>modules/transactions/purchase_view.php?id=<?php echo $trans['trans_id']; ?>"
+                            <a href="<?php echo BASE_URL; ?>modules/transactions/purchases_view.php?id=<?php echo $trans['trans_id']; ?>"
                                target="_blank" class="text-decoration-none">
                                 <?php echo htmlspecialchars($trans['reference']); ?>
                                 <i class="bi bi-box-arrow-up-right small"></i>
@@ -1078,7 +1078,7 @@ if ($productFilter && $locationFilter) {
                                 <i class="bi bi-box-arrow-up-right small"></i>
                             </a>
                             <?php else: ?>
-                            <a href="<?php echo BASE_URL; ?>modules/transactions/sale_view.php?id=<?php echo $trans['trans_id']; ?>"
+                            <a href="<?php echo BASE_URL; ?>modules/transactions/sales_view.php?id=<?php echo $trans['trans_id']; ?>"
                                target="_blank" class="text-decoration-none">
                                 <?php echo htmlspecialchars($trans['reference']); ?>
                                 <i class="bi bi-box-arrow-up-right small"></i>

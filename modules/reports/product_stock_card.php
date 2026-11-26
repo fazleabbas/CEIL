@@ -207,6 +207,7 @@ if ($locationFilter && $productFilter) {
                 pi.import_date as trans_date,
                 'purchase' as trans_type,
                 pi.id as trans_id,
+                1 as is_import,
                 pid.quantity,
                 pid.landed_rate_per_unit as rate_per_unit,
                 CONCAT('Import - ', pi.import_number, ' - ', la.name) as particulars,
@@ -403,6 +404,8 @@ if ($locationFilter && $productFilter) {
                 'particulars' => $trans['particulars'],
                 'trans_type' => $trans['trans_type'],
                 'trans_id' => $trans['trans_id'],
+                // Imports count as purchases but link to the import, not a purchase.
+                'is_import' => !empty($trans['is_import']),
                 'purchase' => $purchase,
                 'sale' => $sale,
                 'adjustment' => $adjustment,
@@ -576,14 +579,16 @@ if ($locationFilter && $productFilter) {
 
                         // Determine link for transaction
                         $transLink = '#';
-                        if ($row['trans_type'] === 'purchase') {
+                        if ($row['trans_type'] === 'purchase' && !empty($row['is_import'])) {
+                            $transLink = BASE_URL . 'modules/transactions/purchase_imports.php?view=' . $row['trans_id'];
+                        } elseif ($row['trans_type'] === 'purchase') {
                             $transLink = BASE_URL . 'modules/transactions/purchases_view.php?id=' . $row['trans_id'];
                         } elseif ($row['trans_type'] === 'sale') {
                             $transLink = BASE_URL . 'modules/transactions/sales_view.php?id=' . $row['trans_id'];
                         } elseif ($row['trans_type'] === 'adjustment_in' || $row['trans_type'] === 'adjustment_out') {
                             $transLink = BASE_URL . 'modules/transactions/stock_adjustment_view.php?id=' . $row['trans_id'];
                         } elseif ($row['trans_type'] === 'transfer_in' || $row['trans_type'] === 'transfer_out') {
-                            $transLink = BASE_URL . 'modules/transactions/stock_transfer_view.php?id=' . $row['trans_id'];
+                            $transLink = BASE_URL . 'modules/transactions/transfers_view.php?id=' . $row['trans_id'];
                         } elseif ($row['trans_type'] === 'consumption') {
                             $transLink = BASE_URL . 'modules/transactions/consumption_voucher_view.php?id=' . $row['trans_id'];
                         }
