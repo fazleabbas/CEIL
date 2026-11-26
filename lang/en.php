@@ -1907,6 +1907,8 @@ return [
 
     // Per-report rights (Masters -> Users)
     'report_right_stock_report_includes' => 'Includes Product Stock Card and Location Breakdown',
+    'report_right_product_stock_locations' => 'Product Stock by Location',
+    'report_right_product_stock_locations_hint' => 'The product icon on the stock reports. Does not open the Stock Value menu.',
 
     // Requisition voucher print
     'rv_available_at_print_time' => 'Available (at print time)',

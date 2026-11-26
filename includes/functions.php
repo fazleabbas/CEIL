@@ -234,6 +234,7 @@ function getReportRights() {
         'stock_report_by_type' => 'stock_report_by_type',
         'dead_stock' => 'dead_stock',
         'stock_value' => 'total_stock_value',
+        'product_stock_locations' => 'report_right_product_stock_locations',
         'profit_loss' => 'profit_loss',
         'cost_centre_report' => 'cost_centre_report',
         'cost_centre_comparison' => 'cost_centre_comparison',
@@ -276,10 +277,25 @@ function canViewReport($key) {
 }
 
 /**
+ * Stock Value by Product (one product's qty / rate / value per location).
+ * Opened from the product icon on Stock Report and Stock Report by Location
+ * Type. Total Stock Value admits it as before; the separate right admits ONLY
+ * this page, not the Stock Value menu or its other pages.
+ */
+function canViewProductStockLocations() {
+    return canViewReport('stock_value') || canViewReport('product_stock_locations');
+}
+
+/**
  * Whether the current user may view at least one report (drives the menu).
  */
 function canViewAnyReport() {
     foreach (array_keys(getReportRights()) as $key) {
+        // No menu item of its own: it only opens from the product icon on the
+        // stock reports, so on its own it must not show an empty Reports menu.
+        if ($key === 'product_stock_locations') {
+            continue;
+        }
         if (canViewReport($key)) {
             return true;
         }

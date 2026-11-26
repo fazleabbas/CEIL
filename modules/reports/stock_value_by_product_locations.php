@@ -2,15 +2,19 @@
 require_once '../../config/database.php';
 require_once '../../includes/functions.php';
 
-if (!canViewReport('stock_value')) {
+if (!canViewProductStockLocations()) {
     setAlert(__('no_permission'), 'danger');
     redirect('');
 }
 
+// Bad / missing product: back to the Stock Value summary, unless the user only
+// holds the product-only right, which does not open that page.
+$svBackPath = canViewReport('stock_value') ? 'modules/reports/stock_value_breakdown.php' : '';
+
 $productId = (int)($_GET['product_id'] ?? 0);
 if ($productId <= 0) {
     setAlert(__('no_data'), 'danger');
-    redirect('modules/reports/stock_value_breakdown.php');
+    redirect($svBackPath);
 }
 
 $stmt = $conn->prepare("SELECT id, name, unit FROM products WHERE id = ? AND is_active = 1");
@@ -18,7 +22,7 @@ $stmt->execute([$productId]);
 $product = $stmt->fetch();
 if (!$product) {
     setAlert(__('no_data'), 'danger');
-    redirect('modules/reports/stock_value_breakdown.php');
+    redirect($svBackPath);
 }
 
 $pageTitle = __('total_stock_value') . ' — ' . $product['name'];

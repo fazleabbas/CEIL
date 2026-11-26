@@ -566,7 +566,7 @@ if (!empty($locationIds)) {
                         <td><?php echo $rowNum; ?></td>
                         <td>
                             <strong><?php echo htmlspecialchars($item['product_name']); ?></strong>
-                            <?php if (canViewReport('stock_value')): ?>
+                            <?php if (canViewProductStockLocations()): ?>
                             <a href="stock_value_by_product_locations.php?product_id=<?php echo $item['id']; ?>"
                                class="text-decoration-none ms-2"
                                target="_blank" rel="noopener"

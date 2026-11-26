@@ -1907,6 +1907,8 @@ return [
 
     // Per-report rights (Masters -> Users)
     'report_right_stock_report_includes' => 'Inajumuisha Kadi ya Bidhaa na Mchanganuo wa Eneo',
+    'report_right_product_stock_locations' => 'Hisa ya Bidhaa kwa Eneo',
+    'report_right_product_stock_locations_hint' => 'Alama ya bidhaa kwenye ripoti za hisa. Haifungui menyu ya Thamani ya Hisa.',
 
     // Requisition voucher print
     'rv_available_at_print_time' => 'Inapatikana (wakati wa kuchapisha)',

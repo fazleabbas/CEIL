@@ -1,3 +1,37 @@
+# FEATURE: Own right for the product icon on the stock reports [x]
+**Status: COMPLETED** - no schema change, no migration. Verified with one
+temporary user (removed; users / user_permissions / user_locations
+AUTO_INCREMENT back to 46 / 1809 / 5409) on a scratch copy against the 7.4
+MySQL on port 3307.
+
+**Files (MODIFIED, 7):** `includes/functions.php`, `modules/reports/stock_report.php`,
+`stock_report_by_type.php`, `stock_value_by_product_locations.php`,
+`modules/masters/users_form.php`, `lang/en.php`, `lang/sw.php`
+
+## Decisions (user-confirmed)
+- The building icon beside a product on Stock Report and Stock Report by
+  Location Type opens `stock_value_by_product_locations.php`. It needed Total
+  Stock Value, which also opens the Stock Value menu + its other 3 pages.
+- New right `report_product_stock_locations`, labelled "Product Stock by
+  Location". Icon and page admit Total Stock Value OR it
+  (`canViewProductStockLocations()`). Money columns stay: both stock reports
+  already show rate and value.
+- NO menu item, so `canViewAnyReport()` skips it: alone it must not show an
+  empty Reports menu. This breaks the "every right gets a menu item" rule above
+  on purpose.
+- Bad product id redirects to the Stock Value summary only for holders of Total
+  Stock Value; others go home, since the summary would refuse them.
+
+## Verification
+4 permission sets x 7 URLs: stock reports only (no icon, page 302), + new right
+(icon on both reports, page 200, breakdown / by-category 302, no Stock Value
+menu), new right alone (page 200, no Reports menu), + Total Stock Value
+(unchanged). Users form shows the box with its hint and ticks it when held.
+0 PHP diagnostics.
+
+---
+---
+
 # FEATURE: Blacklist suppliers so budgets cannot use them [x]
 **Status: COMPLETED** - verified with a temporary Admin session file (removed)
 on a test copy of the app against the 7.4 MySQL on port 3307. suppliers,

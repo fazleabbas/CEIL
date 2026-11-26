@@ -557,6 +557,8 @@ require_once '../../includes/header.php';
                                             <strong><?php _e($reportLabelKey); ?></strong>
                                             <?php if ($reportKey === 'stock_report'): ?>
                                             <div class="text-muted small"><?php _e('report_right_stock_report_includes'); ?></div>
+                                            <?php elseif ($reportKey === 'product_stock_locations'): ?>
+                                            <div class="text-muted small"><?php _e('report_right_product_stock_locations_hint'); ?></div>
                                             <?php endif; ?>
                                         </td>
                                         <td class="text-center">
