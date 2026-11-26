@@ -1,3 +1,42 @@
+# FEATURE: Edit a pending or approved Purchase Order [x]
+**Status: COMPLETED** - no schema change, no migration. Verified with one
+temporary user on a scratch copy against the 7.4 MySQL on port 3307;
+purchase_orders + purchase_order_details diff IDENTICAL after restore, all
+AUTO_INCREMENTs back.
+
+**Files (MODIFIED, 6):** `includes/functions.php`, `modules/transactions/purchase_order.php`,
+`purchase_order_list.php`, `purchase_order_view.php`, `lang/en.php`, `lang/sw.php`
+
+## Decisions (user-confirmed)
+- `purchase_orders.edit` right only (no creator override).
+- Editable: draft, pending_approval, approved with NOTHING purchased.
+  Saving a pending or approved PO moves it back to **DRAFT**: sent-for-approval
+  and approved_by / at / signature / approval_remarks cleared. The user then
+  sends it for approval again. Audit `withdraw_to_draft` (old/new status);
+  approvers notified `purchase_order_withdrawn`. Yellow warning on the form
+  before typing.
+- Locked: any PO with `budget_id` (raised from a budget OR linked later),
+  anything purchased, closed, cancelled, rejected (Revise first). These show a
+  GREYED pencil (list + view) whose click alerts the reason.
+- One gate: `poEditBlockReason($po, $hasPurchases)` + batched
+  `poPurchasedIds()` (purchases.purchase_order_id OR purchased_quantity > 0).
+  Form, list and view all call it. Do not re-inline.
+
+## Worth knowing
+- An APPROVED PO opens at the APPROVED qty/rate (approved_* written into
+  quantity/rate_per_unit on save, approved_* then NULL). A line the approver
+  set to 0 is left out. Otherwise a no-change save would undo the approver.
+- Lines are still deleted and re-inserted: safe, nothing references
+  purchase_order_details rows, and purchased POs are locked.
+- The save re-checks the gate `FOR UPDATE` inside the transaction. A POST is
+  NOT bounced by the page-load gate, so a PO purchased after the form opened
+  shows the reason inline instead of silently dropping the edit.
+- Form errors now render inline (setAlert is never displayed app-wide).
+- `purchase_order.php` is LF; the view and functions.php are CRLF.
+
+---
+---
+
 # FEATURE: Own right for the product icon on the stock reports [x]
 **Status: COMPLETED** - no schema change, no migration. Verified with one
 temporary user (removed; users / user_permissions / user_locations

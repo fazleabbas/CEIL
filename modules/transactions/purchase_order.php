@@ -5,9 +5,11 @@
  * from it do. Direct POs are saved as drafts and go through approval
  * (draft -> pending_approval -> approved) before they can be converted.
  *
- * Only draft POs may be edited here; lifecycle actions (send for approval,
- * approve, reject, cancel) live on purchase_order_view.php via
- * api/purchase-orders-sync.php.
+ * Draft, pending and approved-with-nothing-purchased POs may be edited here
+ * (poEditBlockReason() decides). Saving a pending or approved PO moves it back
+ * to DRAFT and clears the approval, so it must be sent for approval again.
+ * Lifecycle actions (send for approval, approve, reject, cancel) live on
+ * purchase_order_view.php via api/purchase-orders-sync.php.
  */
 require_once '../../config/database.php';
 require_once '../../includes/functions.php';
@@ -39,18 +41,28 @@ $po = [
     'status' => 'draft',
 ];
 $poDetails = [];
+$errors = [];
 
 if ($isEdit) {
     $id = (int)$_GET['id'];
-    $stmt = $conn->prepare("SELECT * FROM purchase_orders WHERE id = ?");
+    $stmt = $conn->prepare("
+        SELECT po.*, b.budget_number
+        FROM purchase_orders po
+        LEFT JOIN budgets b ON po.budget_id = b.id
+        WHERE po.id = ?
+    ");
     $stmt->execute([$id]);
     $po = $stmt->fetch(PDO::FETCH_ASSOC);
     if (!$po) {
         setAlert(__('po_not_found'), 'danger');
         redirect('modules/transactions/purchase_order_list.php');
     }
-    if ($po['status'] !== 'draft') {
-        setAlert(__('po_only_draft_edit'), 'warning');
+    // Opening a locked PO goes back to its view. A POST is let through: the
+    // save re-checks inside its transaction and shows the reason, rather than
+    // silently dropping the user's changes if the PO was locked meanwhile.
+    $poPurchased = poPurchasedIds($conn, [$id]);
+    if ($_SERVER['REQUEST_METHOD'] !== 'POST'
+        && poEditBlockReason($po, !empty($poPurchased[$id])) !== null) {
         redirect('modules/transactions/purchase_order_view.php?id=' . $id);
     }
 
@@ -63,6 +75,19 @@ if ($isEdit) {
     ");
     $detStmt->execute([$id]);
     $poDetails = $detStmt->fetchAll(PDO::FETCH_ASSOC);
+
+    // An APPROVED PO opens at the APPROVED quantity and rate, so a save that
+    // changes nothing does not undo the approver's changes. A line the approver
+    // set to 0 is left out. (Pending/draft lines have no approved figures.)
+    if ($po['status'] === 'approved') {
+        $kept = [];
+        foreach ($poDetails as $d) {
+            if ($d['approved_quantity'] !== null) $d['quantity'] = $d['approved_quantity'];
+            if ($d['approved_rate'] !== null) $d['rate_per_unit'] = $d['approved_rate'];
+            if ((float)$d['quantity'] > 0.0005) $kept[] = $d;
+        }
+        $poDetails = $kept;
+    }
 }
 
 // Budget mode (?from_budget=<id>&supplier=<sid>, create only): the PO is raised
@@ -286,12 +311,24 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             $conn->beginTransaction();
 
             if ($editId) {
-                // Re-check draft status inside the transaction.
-                $chk = $conn->prepare("SELECT status FROM purchase_orders WHERE id = ?");
+                // Re-check the edit gate inside the transaction: the PO may have
+                // been approved, purchased against or linked to a budget since
+                // the form was opened.
+                $chk = $conn->prepare("
+                    SELECT po.id, po.po_number, po.status, po.budget_id, b.budget_number
+                    FROM purchase_orders po
+                    LEFT JOIN budgets b ON po.budget_id = b.id
+                    WHERE po.id = ? FOR UPDATE
+                ");
                 $chk->execute([$editId]);
-                if ($chk->fetchColumn() !== 'draft') {
-                    throw new Exception(__('po_only_draft_edit'));
+                $cur = $chk->fetch(PDO::FETCH_ASSOC);
+                $curPurchased = $cur ? poPurchasedIds($conn, [$editId]) : [];
+                $blockReason = poEditBlockReason($cur ?: null, !empty($curPurchased[$editId]));
+                if ($blockReason !== null) {
+                    throw new Exception($blockReason);
                 }
+                $prevStatus = $cur['status'];
+                $editPoNumber = $cur['po_number'];
                 $upd = $conn->prepare("
                     UPDATE purchase_orders SET
                         po_date = ?, expected_date = ?, supplier_id = ?, location_id = ?,
@@ -306,6 +343,18 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                     $totalAmount, $vatAmount, $remarks,
                     $paymentTerms, $deliveryTerms, $editId,
                 ]);
+                // Pending or approved: back to DRAFT, approval cleared. It must
+                // be sent for approval again.
+                if ($prevStatus !== 'draft') {
+                    $conn->prepare("
+                        UPDATE purchase_orders SET
+                            status = 'draft',
+                            sent_for_approval_by = NULL, sent_for_approval_at = NULL,
+                            approved_by = NULL, approved_at = NULL,
+                            approved_by_signature = NULL, approval_remarks = NULL
+                        WHERE id = ?
+                    ")->execute([$editId]);
+                }
                 $conn->prepare("DELETE FROM purchase_order_details WHERE purchase_order_id = ?")->execute([$editId]);
                 $poId = $editId;
             } elseif ($fromBudget) {
@@ -374,6 +423,25 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 
             $conn->commit();
             logAudit('purchase_order', $editId ? 'update' : 'create', $poId);
+
+            if ($editId && $prevStatus !== 'draft') {
+                logAudit('purchase_order', 'withdraw_to_draft', $poId,
+                    ['status' => $prevStatus], ['status' => 'draft']);
+                // Best-effort: tell approvers it no longer waits for them.
+                try {
+                    notifyApprovers(
+                        'purchase_orders',
+                        'purchase_order_withdrawn',
+                        __('po_withdrawn_notify_title'),
+                        sprintf(__('po_withdrawn_notify_body'), $editPoNumber),
+                        BASE_URL . 'modules/transactions/purchase_order_view.php?id=' . $poId,
+                        $poId,
+                        'purchase_order'
+                    );
+                } catch (Exception $ne) {
+                    error_log('PO withdraw notify failed: ' . $ne->getMessage());
+                }
+            }
             setAlert($editId ? __('purchase_order_updated') : __('purchase_order_created'), 'success');
             redirect('modules/transactions/purchase_order_view.php?id=' . $poId);
 
@@ -410,6 +478,20 @@ $costCentres = getUserCostCentres();
                 </div>
             </div>
             <div class="card-body">
+                <?php /* setAlert() is never displayed app-wide, so errors are shown here. */ ?>
+                <?php if (!empty($errors)): ?>
+                <div class="alert alert-danger">
+                    <?php foreach ($errors as $err): ?>
+                    <div><i class="bi bi-exclamation-triangle"></i> <?php echo htmlspecialchars($err); ?></div>
+                    <?php endforeach; ?>
+                </div>
+                <?php endif; ?>
+                <?php if ($isEdit && in_array($po['status'], ['pending_approval', 'approved'], true)): ?>
+                <div class="alert alert-warning">
+                    <i class="bi bi-exclamation-triangle-fill"></i>
+                    <?php echo $po['status'] === 'approved' ? __('po_edit_warning_approved') : __('po_edit_warning_pending'); ?>
+                </div>
+                <?php endif; ?>
                 <?php if ($fromBudget): ?>
                 <div class="alert alert-info">
                     <i class="bi bi-cash-coin"></i>

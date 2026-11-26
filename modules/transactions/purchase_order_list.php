@@ -91,8 +91,10 @@ $stmt = $conn->prepare("
         la.name as supplier_name,
         l.name as location_name,
         u.name as created_by_name,
+        b.budget_number,
         (SELECT COUNT(*) FROM purchase_order_details WHERE purchase_order_id = po.id) as item_count
     FROM purchase_orders po
+    LEFT JOIN budgets b ON po.budget_id = b.id
     LEFT JOIN suppliers s ON po.supplier_id = s.id
     LEFT JOIN ledger_accounts la ON s.ledger_account_id = la.id
     LEFT JOIN locations l ON po.location_id = l.id
@@ -102,6 +104,10 @@ $stmt = $conn->prepare("
 ");
 $stmt->execute($params);
 $orders = $stmt->fetchAll();
+
+// Edit gate for the whole page in 2 queries (poEditBlockReason() decides).
+$poCanEditRight = hasPermission('purchase_orders', 'edit');
+$poPurchasedMap = $poCanEditRight ? poPurchasedIds($conn, array_column($orders, 'id')) : [];
 ?>
 
 <div class="row justify-content-center">
@@ -251,10 +257,21 @@ $orders = $stmt->fetchAll();
                                     <a href="purchase_order_view.php?id=<?php echo $o['id']; ?>" class="btn btn-sm btn-outline-primary" title="<?php _e('view'); ?>">
                                         <i class="bi bi-eye"></i>
                                     </a>
-                                    <?php if ($o['status'] === 'draft' && hasPermission('purchase_orders', 'edit')): ?>
+                                    <?php if ($poCanEditRight):
+                                        $poLockReason = poEditBlockReason($o, !empty($poPurchasedMap[(int)$o['id']]));
+                                    ?>
+                                    <?php if ($poLockReason === null): ?>
                                     <a href="purchase_order.php?id=<?php echo $o['id']; ?>" class="btn btn-sm btn-outline-warning" title="<?php _e('edit'); ?>">
                                         <i class="bi bi-pencil"></i>
                                     </a>
+                                    <?php else: ?>
+                                    <button type="button" class="btn btn-sm btn-outline-secondary po-edit-locked" style="opacity: .45;"
+                                            title="<?php echo htmlspecialchars($poLockReason); ?>"
+                                            data-reason="<?php echo htmlspecialchars($poLockReason); ?>"
+                                            onclick="alert(this.dataset.reason)">
+                                        <i class="bi bi-pencil"></i>
+                                    </button>
+                                    <?php endif; ?>
                                     <?php endif; ?>
                                     <?php if ($o['status'] === 'draft' && hasPermission('purchase_orders', 'delete')): ?>
                                     <button onclick="confirmDelete(<?php echo $o['id']; ?>)" class="btn btn-sm btn-outline-danger" title="<?php _e('delete'); ?>">

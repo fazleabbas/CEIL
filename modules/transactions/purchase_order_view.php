@@ -96,6 +96,8 @@ $nothingPurchased = true;
 foreach ($details as $d) {
     if ((float)$d['purchased_quantity'] > 0.0005) { $nothingPurchased = false; break; }
 }
+// Edit gate (shared with the form and the list). NULL = editable.
+$poEditLockReason = poEditBlockReason($po, !$nothingPurchased || !empty($linkedPurchases));
 
 // ---------------------------------------------------------------------------
 // Link a PO to an approved budget after the fact.
@@ -576,6 +578,25 @@ $statusBadge = function ($s) {
                     <?php endif; ?>
                     <?php if ($canEdit && $nothingPurchased): ?>
                     <button type="button" class="btn btn-outline-danger" data-bs-toggle="modal" data-bs-target="#cancelPoModal"><i class="bi bi-slash-circle"></i> <?php _e('cancel_po'); ?></button>
+                    <?php endif; ?>
+                </div>
+                <?php endif; ?>
+
+                <?php /* Edit for a non-draft PO (draft has its own button above).
+                        Pending / approved-with-nothing-purchased: opens the form,
+                        and saving moves it back to draft. Locked: a greyed button
+                        that says why. */ ?>
+                <?php if ($canEdit && $status !== 'draft'): ?>
+                <div class="mt-3 no-print">
+                    <?php if ($poEditLockReason === null): ?>
+                    <a href="purchase_order.php?id=<?php echo $id; ?>" class="btn btn-outline-primary"><i class="bi bi-pencil"></i> <?php _e('edit'); ?></a>
+                    <?php else: ?>
+                    <button type="button" class="btn btn-outline-secondary" style="opacity: .55;"
+                            title="<?php echo htmlspecialchars($poEditLockReason); ?>"
+                            data-reason="<?php echo htmlspecialchars($poEditLockReason); ?>"
+                            onclick="alert(this.dataset.reason)">
+                        <i class="bi bi-pencil"></i> <?php _e('edit'); ?>
+                    </button>
                     <?php endif; ?>
                 </div>
                 <?php endif; ?>

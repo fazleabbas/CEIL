@@ -4770,4 +4770,75 @@ function postInputWasTruncated() {
     array_walk_recursive($_POST, function () use (&$n) { $n++; });
     return $n >= $max;
 }
+
+/**
+ * Purchase Order edit gate. The ONLY place that decides whether a PO may be
+ * opened in purchase_order.php; the form, the view and the list all call it,
+ * so they can never disagree about who gets a pencil.
+ *
+ * Editable: draft, pending_approval, and approved with nothing purchased.
+ * Saving a pending or approved PO moves it back to DRAFT (the approval is
+ * cleared), so it must be sent for approval again.
+ *
+ * Never editable: a PO on a budget (raised from one, or linked later), which
+ * the budget's approval covers; anything purchased against; closed; cancelled;
+ * rejected (Revise first, as before).
+ *
+ * Returns NULL when editable, otherwise the reason to show the user. The
+ * caller checks the purchase_orders 'edit' permission separately.
+ *
+ * @param array $po           Row with status, budget_id, optional budget_number
+ * @param bool  $hasPurchases From poPurchasedIds()
+ */
+function poEditBlockReason($po, $hasPurchases) {
+    if (!is_array($po)) {
+        return __('po_not_found');
+    }
+    $status = $po['status'] ?? '';
+    if (!empty($po['budget_id'])) {
+        $num = !empty($po['budget_number']) ? $po['budget_number'] : ('#' . (int)$po['budget_id']);
+        return sprintf(__('po_edit_blocked_budget'), $num);
+    }
+    if ($status === 'closed')    return __('po_edit_blocked_closed');
+    if ($status === 'cancelled') return __('po_edit_blocked_cancelled');
+    if ($status === 'rejected')  return __('po_edit_blocked_rejected');
+    if (!in_array($status, ['draft', 'pending_approval', 'approved'], true)) {
+        return __('po_only_draft_edit');
+    }
+    if ($hasPurchases) {
+        return __('po_edit_blocked_purchased');
+    }
+    return null;
+}
+
+/**
+ * Which of the given POs have anything purchased against them: a purchase
+ * linked by purchase_order_id, or a line with purchased_quantity > 0.
+ * Batched, so the list resolves a whole page in 2 queries.
+ *
+ * @return array po_id => true
+ */
+function poPurchasedIds($conn, array $poIds) {
+    $ids = array_values(array_unique(array_filter(array_map('intval', $poIds))));
+    if (empty($ids)) {
+        return [];
+    }
+    $in = implode(',', $ids);
+    $out = [];
+    $rows = $conn->query("
+        SELECT DISTINCT purchase_order_id FROM purchase_order_details
+        WHERE purchase_order_id IN ($in) AND purchased_quantity > 0.0005
+    ")->fetchAll(PDO::FETCH_COLUMN);
+    foreach ($rows as $r) $out[(int)$r] = true;
+    try {
+        $rows = $conn->query("
+            SELECT DISTINCT purchase_order_id FROM purchases
+            WHERE purchase_order_id IN ($in)
+        ")->fetchAll(PDO::FETCH_COLUMN);
+        foreach ($rows as $r) $out[(int)$r] = true;
+    } catch (Throwable $e) {
+        // purchases.purchase_order_id missing (pre-0038): the line check stands.
+    }
+    return $out;
+}
 ?>
